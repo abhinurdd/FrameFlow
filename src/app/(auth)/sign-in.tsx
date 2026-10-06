@@ -5,7 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'reac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
-import { isDemoMode, useAuth } from '@/services/auth';
+import { authErrorMessage, isDemoMode, useAuth } from '@/services/auth';
 import { Logo } from '@/ui/brand';
 import { Button, Panel, Row, T } from '@/ui/primitives';
 import { colors, fonts } from '@/ui/theme';
@@ -28,6 +28,7 @@ export default function SignIn() {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState<'google' | 'apple' | 'email' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState(false);
   const valid = EMAIL_RE.test(email.trim());
 
   async function run(kind: 'google' | 'apple' | 'email', fn: () => Promise<void>) {
@@ -36,7 +37,7 @@ export default function SignIn() {
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+      setError(authErrorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -45,25 +46,21 @@ export default function SignIn() {
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, padding: 20 }}>
-        <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
-        </Pressable>
-        <View style={{ marginTop: 24 }}>
+        {/* A returning user lands here directly, with nothing to go back to. */}
+        {router.canGoBack() ? (
+          <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" style={({ pressed }) => ({ width: 44, height: 44, marginLeft: -10, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
+          </Pressable>
+        ) : (
+          <View style={{ height: 44 }} />
+        )}
+        <View style={{ marginTop: 12 }}>
           <Logo size={44} />
-          <T variant="muted" style={{ marginTop: 20 }}>Step 2 of 2</T>
-          <T variant="title" style={{ marginTop: 4 }}>Save your clips</T>
-          <T variant="muted" style={{ marginTop: 6 }}>Sign in to process videos and keep your projects across devices.</T>
+          {router.canGoBack() && <T variant="muted" style={{ marginTop: 20 }}>Step 2 of 2</T>}
+          <T variant="title" style={{ marginTop: router.canGoBack() ? 4 : 20 }}>{router.canGoBack() ? 'Save your work' : 'Welcome back'}</T>
+          <T variant="muted" style={{ marginTop: 6 }}>Sign in to keep your projects and clips safe, on any phone.</T>
         </View>
 
-        <Button
-          title="Continue with Google"
-          variant="secondary"
-          icon={<GoogleG />}
-          loading={busy === 'google'}
-          disabled={busy !== null}
-          style={{ marginTop: 28 }}
-          onPress={() => run('google', signInWithGoogle)}
-        />
         {Platform.OS === 'ios' && (
           <Button
             title="Continue with Apple"
@@ -71,10 +68,20 @@ export default function SignIn() {
             icon={<Ionicons name="logo-apple" size={19} color={colors.text} />}
             loading={busy === 'apple'}
             disabled={busy !== null}
-            style={{ marginTop: 10 }}
+            style={{ marginTop: 28 }}
             onPress={() => run('apple', signInWithApple)}
           />
         )}
+
+        <Button
+          title="Continue with Google"
+          variant="secondary"
+          icon={<GoogleG />}
+          loading={busy === 'google'}
+          disabled={busy !== null}
+          style={{ marginTop: Platform.OS === 'ios' ? 10 : 28 }}
+          onPress={() => run('google', signInWithGoogle)}
+        />
 
         <Row style={{ marginVertical: 20 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
@@ -82,11 +89,17 @@ export default function SignIn() {
           <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
         </Row>
 
-        <Panel style={{ paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Panel style={{ paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 8, borderColor: touched && email.length > 0 && !valid ? colors.danger : colors.line }}>
           <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
           <TextInput
             value={email}
-            onChangeText={setEmail}
+            accessibilityLabel="Email address"
+            onChangeText={(v) => {
+              setEmail(v);
+              setTouched(false);
+            }}
+            onBlur={() => setTouched(true)}
+            autoCorrect={false}
             placeholder="you@example.com"
             placeholderTextColor={colors.textDim}
             keyboardType="email-address"
@@ -97,6 +110,7 @@ export default function SignIn() {
             style={{ flex: 1, height: 44, color: colors.text, fontFamily: fonts.medium, fontSize: 15 }}
           />
         </Panel>
+        {touched && email.length > 0 && !valid && <T style={{ color: colors.danger, marginTop: 6, fontSize: 12.5 }}>Enter a full email address, like name@example.com.</T>}
         <Button
           title="Email me a code"
           disabled={!valid || busy !== null}
@@ -111,13 +125,13 @@ export default function SignIn() {
           }
         />
 
-        {error && <T style={{ color: colors.danger, marginTop: 12, fontSize: 13 }}>{error}</T>}
+        {error && <T accessibilityLiveRegion="polite" style={{ color: colors.danger, marginTop: 12, fontSize: 13 }}>{error}</T>}
 
         <View style={{ flex: 1 }} />
         {isDemoMode && (
           <Panel style={{ marginBottom: 8, borderColor: 'rgba(245,158,11,.45)', backgroundColor: colors.amberSoft }}>
             <T style={{ color: '#FFD08A', fontSize: 12 }}>
-              Demo mode: the backend isn&apos;t connected yet, so sign-in is simulated on this device. Any 6-digit code works.
+              Demo mode: accounts aren&apos;t connected yet, so sign-in is simulated on this phone. Any 6-digit code works.
             </T>
           </Panel>
         )}

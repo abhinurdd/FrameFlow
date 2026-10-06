@@ -136,6 +136,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+/** Turn a sign-in failure into something a person can act on. */
+export function authErrorMessage(e: unknown) {
+  const raw = e instanceof Error ? e.message : '';
+  if (/network|fetch|timed? ?out/i.test(raw)) return 'No connection. Check your internet and try again.';
+  if (/rate limit|too many|security purposes/i.test(raw)) return 'Too many attempts. Wait a minute, then try again.';
+  if (/expired|invalid.*(otp|token)|otp.*invalid/i.test(raw)) return 'That code is wrong or has expired. Request a new one.';
+  if (/provider is not enabled|unsupported provider/i.test(raw)) return 'This sign-in method is not switched on yet. Use another one for now.';
+  return raw || 'Something went wrong. Please try again.';
+}
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');

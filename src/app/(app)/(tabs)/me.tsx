@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isDemoMode, useAuth } from '@/services/auth';
@@ -57,7 +57,7 @@ export default function Me() {
         </Panel>
 
         <Panel style={{ marginTop: 12, paddingVertical: 2 }}>
-          <Item icon="log-out-outline" label="Sign out" danger onPress={signOut} />
+          <Item icon="log-out-outline" label="Sign out" danger onPress={() => Alert.alert('Sign out?', 'Your drafts stay on this phone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign out', style: 'destructive', onPress: () => signOut() }])} />
         </Panel>
         {isDemoMode && <T variant="tiny" style={{ marginTop: 14, textAlign: 'center' }}>Demo mode · backend not connected</T>}
       </ScrollView>
