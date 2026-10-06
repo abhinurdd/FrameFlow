@@ -1,11 +1,11 @@
-/** Media tools: reverse, freeze frame, audio extraction, denoise, silence, beats, waveform, transcription. */
+/** Media tools: reverse, freeze frame, audio extraction, denoise, stabilise, voice effects, text to speech, silence, beats, waveform, transcription. */
 
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { delimiter, extname, join } from 'node:path';
 
-import { ffmpeg, sec } from './ff.ts';
+import { FFMPEG, ffmpeg, run, sec } from './ff.ts';
 import type { JobContext, JobOutput } from './jobs.ts';
 import { addFile, HttpError, mediaPath, MODELS_DIR, publicInfo, type Media } from './media.ts';
 
@@ -82,6 +82,114 @@ export async function denoise(media: Media, ctx: JobContext): Promise<JobOutput>
   const streams = video ? ['-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy'] : ['-map', '0:a:0', '-vn'];
   await ffmpeg(['-v', 'error', '-i', mediaPath(media), ...streams, '-af', 'afftdn=nr=12:nf=-40:tn=1', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out], { duration: media.duration, onProgress: ctx.progress });
   return asMedia(out, `${stem(media)}-denoised${ext}`);
+}
+
+// ---- Stabilise ----
+
+let filterList: Promise<string> | null = null;
+/** Whether this ffmpeg build has a filter. */
+async function hasFilter(name: string) {
+  filterList ??= run(FFMPEG, ['-hide_banner', '-filters']).then((r) => r.stdout, () => '');
+  return new RegExp(`^\\s*\\S+\\s+${name}\\s`, 'm').test(await filterList);
+}
+
+/** Two-pass vid.stab when the build has it, else the simpler one-pass `deshake`. Audio is copied. */
+export async function stabilize(media: Media, ctx: JobContext): Promise<JobOutput> {
+  needs(media, 'video');
+  const src = mediaPath(media);
+  const out = join(ctx.tmp, 'stabilized.mp4');
+  const audio = media.hasAudio ? ['-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k'] : [];
+  const encode = ['-map', '0:v:0', ...audio, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out];
+  let method = 'deshake';
+  if ((await hasFilter('vidstabdetect')) && (await hasFilter('vidstabtransform'))) {
+    method = 'vidstab';
+    // The filter option parser needs a path without quotes or colons, so run inside the scratch directory.
+    const trf = 'motion.trf';
+    await ffmpeg(['-v', 'error', '-i', src, '-map', '0:v:0', '-vf', `vidstabdetect=shakiness=6:accuracy=12:result=${trf}`, '-f', 'null', '-'], { duration: media.duration, onProgress: (p) => ctx.progress(p * 0.45), cwd: ctx.tmp });
+    await ffmpeg(['-v', 'error', '-i', src, '-vf', `vidstabtransform=input=${trf}:smoothing=20:zoom=4,unsharp=5:5:0.6:3:3:0.3`, ...encode], { duration: media.duration, onProgress: (p) => ctx.progress(0.45 + p * 0.55), cwd: ctx.tmp });
+  } else {
+    // A wide search and a slight zoom to hide the moving edges.
+    await ffmpeg(['-v', 'error', '-i', src, '-vf', 'deshake=rx=32:ry=32:edge=mirror,scale=iw*1.04:-2,crop=iw/1.04:ih/1.04,scale=trunc(iw/2)*2:trunc(ih/2)*2', ...encode], { duration: media.duration, onProgress: ctx.progress });
+  }
+  const done = await asMedia(out, `${stem(media)}-stabilized.mp4`);
+  return { ...done, result: { ...done.result, method } };
+}
+
+// ---- Voice effects ----
+
+/** Shift the pitch by `ratio` and keep the length: resample to change pitch and speed together, then undo the speed. */
+const pitch = (ratio: number) => `aresample=48000,asetrate=${Math.round(48000 * ratio)},aresample=48000,atempo=${(1 / ratio).toFixed(6)}`;
+
+export const VOICE_EFFECTS = {
+  deep: pitch(0.75),
+  chipmunk: pitch(1.5),
+  // A fixed frequency shift makes the voice inharmonic; a fast tremolo and a short metallic echo do the rest.
+  robot: 'aresample=48000,afreqshift=shift=-120,tremolo=f=70:d=0.8,aecho=0.8:0.85:9|17:0.5|0.35,volume=1.3',
+  echo: 'aecho=0.8:0.9:260|520:0.45|0.25',
+  telephone: 'highpass=f=400,lowpass=f=3000,acompressor=threshold=-22dB:ratio=6:makeup=4,volume=1.2',
+} as const;
+export type VoiceEffect = keyof typeof VOICE_EFFECTS;
+
+export function isVoiceEffect(v: unknown): v is VoiceEffect {
+  return typeof v === 'string' && Object.hasOwn(VOICE_EFFECTS, v);
+}
+
+export async function voice(media: Media, effect: VoiceEffect, ctx: JobContext): Promise<JobOutput> {
+  needs(media, 'audio');
+  const video = media.kind === 'video';
+  const ext = !video ? '.m4a' : ['.webm', '.mkv', '.avi'].includes(extname(media.file)) ? '.mkv' : '.mp4';
+  const out = join(ctx.tmp, `voice${ext}`);
+  const streams = video ? ['-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy'] : ['-map', '0:a:0', '-vn'];
+  // Effects with a tail (echo) are cut at the source length, so the result still fits its clip.
+  await ffmpeg(['-v', 'error', '-i', mediaPath(media), ...streams, '-af', `${VOICE_EFFECTS[effect]},apad,atrim=0:${sec(media.duration)}`, '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', out], { duration: media.duration, onProgress: ctx.progress });
+  return asMedia(out, `${stem(media)}-${effect}${ext}`);
+}
+
+// ---- Text to speech ----
+
+export const TTS_MAX_CHARS = 2000;
+
+/** The speech program on this machine: `say` on macOS, `espeak-ng` elsewhere, or null. */
+export function ttsSetup() {
+  const say = process.platform === 'darwin' ? findOnPath('say') : null;
+  const espeak = say ? null : findOnPath('espeak-ng');
+  return { say, espeak, ready: !!(say || espeak) };
+}
+
+let sayVoices: Promise<Set<string>> | null = null;
+function installedVoices(say: string) {
+  sayVoices ??= run(say, ['-v', '?']).then(
+    (r) => new Set(r.stdout.split('\n').map((l) => l.split(/\s{2,}/)[0].trim()).filter(Boolean)),
+    () => new Set<string>(),
+  );
+  return sayVoices;
+}
+
+export async function tts(text: string, language: 'hi' | 'en' | undefined, ctx: JobContext): Promise<JobOutput> {
+  const setup = ttsSetup();
+  if (!setup.ready) throw new Error('text to speech is not set up: it needs `say` (macOS) or `espeak-ng` on PATH.');
+  const hindi = language === 'hi' || (language !== 'en' && /[\u0900-\u097F]/.test(text)) || (language === undefined && /[\u0900-\u097F]/.test(text));
+  const textFile = join(ctx.tmp, 'speech.txt');
+  await writeFile(textFile, text);
+  let raw: string;
+  let voiceName = 'default';
+  if (setup.say) {
+    raw = join(ctx.tmp, 'speech.aiff');
+    const voices = await installedVoices(setup.say);
+    // Hindi: Lekha. Otherwise an Indian English voice. The system default when neither is installed.
+    const pick = (hindi ? ['Lekha'] : ['Rishi', 'Aman', 'Tara', 'Veena']).find((v) => voices.has(v));
+    if (pick) voiceName = pick;
+    await run(setup.say, [...(pick ? ['-v', pick] : []), '-f', textFile, '-o', raw]);
+  } else {
+    raw = join(ctx.tmp, 'speech.wav');
+    voiceName = hindi ? 'hi' : 'en-in';
+    await run(setup.espeak!, ['-v', voiceName, '-f', textFile, '-w', raw]);
+  }
+  ctx.progress(0.8);
+  const out = join(ctx.tmp, 'speech.m4a');
+  await ffmpeg(['-v', 'error', '-i', raw, '-vn', '-ar', '48000', '-ac', '2', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out]);
+  const done = await asMedia(out, 'voiceover.m4a');
+  return { ...done, result: { ...done.result, voice: voiceName } };
 }
 
 // ---- Silence ----
@@ -264,7 +372,45 @@ export function wordsFromWhisper(json: WhisperJson) {
   return words;
 }
 
-export async function transcribe(media: Media, language: string | undefined, ctx: JobContext): Promise<JobOutput> {
+/** Longest a word may be stretched to when its timing has to be made up. */
+const MAX_GUESSED_WORD = 0.6;
+
+/**
+ * Whisper sometimes gives several words in a row the same instant (t0 == t1),
+ * typically after a pause. Spread each such run evenly over the gap up to the next
+ * word that starts later, then make the whole list monotonic with t1 > t0.
+ */
+export function fixWordTimings(input: { t0: number; t1: number; text: string }[], duration = Infinity) {
+  const words = input.map((w) => ({ ...w }));
+  for (let i = 1; i < words.length; i++) words[i].t0 = Math.max(words[i].t0, words[i - 1].t0);
+  const empty = (w: { t0: number; t1: number }) => w.t1 - w.t0 < 0.01;
+  for (let i = 0; i < words.length; i++) {
+    if (!empty(words[i])) continue;
+    let j = i;
+    while (j + 1 < words.length && empty(words[j + 1])) j++;
+    const count = j - i + 1;
+    const start = words[i].t0;
+    const next = words.slice(j + 1).find((w) => w.t0 > start + 0.01);
+    const end = Math.max(start, Math.min(next ? next.t0 : Infinity, duration, start + count * MAX_GUESSED_WORD));
+    const step = (end - start) / count;
+    for (let k = 0; k < count; k++) {
+      words[i + k].t0 = start + k * step;
+      words[i + k].t1 = start + (k + 1) * step;
+    }
+    i = j;
+  }
+  // Whatever is left: no word starts before the one before it ends, and none is shorter than 20 ms.
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (i > 0) w.t0 = Math.max(w.t0, words[i - 1].t1);
+    if (w.t1 < w.t0 + 0.02) w.t1 = w.t0 + 0.02;
+    w.t0 = Number(w.t0.toFixed(3));
+    w.t1 = Number(Math.max(w.t1, w.t0 + 0.02).toFixed(3));
+  }
+  return words;
+}
+
+export async function transcribe(media: Media, language: string | undefined, translate: boolean, ctx: JobContext): Promise<JobOutput> {
   const setup = whisperSetup();
   if (!setup.binary || !setup.model) {
     const missing = !setup.binary ? '`whisper-cli` is not on PATH' : 'no model file was found at $WHISPER_MODEL or pipeline/work/models/*.bin';
@@ -277,7 +423,8 @@ export async function transcribe(media: Media, language: string | undefined, ctx
   const prefix = join(ctx.tmp, 'speech');
   const lang = language && /^[a-z]{2,3}$/i.test(language) ? language.toLowerCase() : 'auto';
   // One word per segment (`-ml 1 -sow`), written as JSON next to the audio; progress is printed to stderr.
-  const args = ['-m', setup.model, '-f', wav, '-l', lang, '-ml', '1', '-sow', '-oj', '-of', prefix, '-pp'];
+  // `-tr` has whisper write English whatever was spoken; the language it reports is still the spoken one.
+  const args = ['-m', setup.model, '-f', wav, '-l', lang, '-ml', '1', '-sow', '-oj', '-of', prefix, '-pp', ...(translate ? ['-tr'] : [])];
   await new Promise<void>((resolve, reject) => {
     const child = spawn(setup.binary!, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
@@ -290,5 +437,5 @@ export async function transcribe(media: Media, language: string | undefined, ctx
     child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`whisper-cli exited with code ${code}: ${stderr.trim().split('\n').slice(-6).join('\n')}`))));
   });
   const json = JSON.parse(await readFile(`${prefix}.json`, 'utf8')) as WhisperJson;
-  return { result: { words: wordsFromWhisper(json), language: json.result?.language ?? lang } };
+  return { result: { words: fixWordTimings(wordsFromWhisper(json), media.duration || Infinity), language: json.result?.language ?? lang, ...(translate ? { translated: true } : {}) } };
 }

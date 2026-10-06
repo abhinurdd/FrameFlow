@@ -13,6 +13,7 @@ import {
   newText,
   addItem,
   parseSrt,
+  rampSegment,
   patchSegment,
   removeSegment,
   segmentStarts,
@@ -129,4 +130,11 @@ test('looks grade pixels', () => {
   const contrast = compileLook({ filter: 'none', strength: 1, adjust: { ...NO_ADJUST, contrast: 1 } });
   expect(gradePixel([0.2, 0.2, 0.2], contrast)[0]).toBeLessThan(0.2);
   expect(gradePixel([0.8, 0.8, 0.8], contrast)[0]).toBeGreaterThan(0.8);
+});
+
+test('speed ramp splits the source evenly', () => {
+  let n = 0;
+  const ramped = rampSegment(edit, 's1', [2, 0.5], () => `r${n++}`);
+  expect(ramped.main.map((s) => [s.id, s.in, s.out, s.speed])).toEqual([['s1', 0, 5, 2], ['r0', 5, 10, 0.5], ['s2', 0, 4, 1]]);
+  expect(totalDuration(ramped)).toBe(2.5 + 10 + 4);
 });

@@ -2,7 +2,9 @@
 
 **As of 2026-10-06.** VN facts come from the iOS App Store listing (v2.22.0) and vlognow.me help pages. The Google Play listing would not load, so Android parity is assumed. Items marked *(unverified)* come from third-party reviews only; a hands-on pass in the app is still needed to close those.
 
-**FrameFlow status:** ✅ built · 🔜 next (works in the current preview engine) · 🧱 needs the compositor (see [strategy §4](../strategy.md)) · ☁️ needs a backend or model · ⏸ not planned yet.
+> The FrameFlow status column below is out of date. Current parity is tracked in [ai-editor-benchmark.md](ai-editor-benchmark.md).
+
+**FrameFlow status (as of the first editor build):** ✅ built · 🔜 next (works in the current preview engine) · 🧱 needs the compositor (see [strategy §4](../strategy.md)) · ☁️ needs a backend or model · ⏸ not planned yet.
 
 ## 1. Project and import
 

@@ -102,8 +102,24 @@ const TOOLS: Record<string, (media: Media, body: Record<string, unknown>) => (ct
   silence: (m, b) => (ctx) => tools.silence(m, number(b.minSilence, 0.4, 0.05, 60), number(b.thresholdDb, -35, -90, 0), ctx),
   beats: (m) => (ctx) => tools.beats(m, ctx),
   waveform: (m, b) => (ctx) => tools.waveform(m, number(b.samples, 400, 1, 20000), ctx),
-  transcribe: (m, b) => (ctx) => tools.transcribe(m, typeof b.language === 'string' ? b.language : undefined, ctx),
+  transcribe: (m, b) => (ctx) => tools.transcribe(m, typeof b.language === 'string' ? b.language : undefined, b.translate === true, ctx),
+  stabilize: (m) => (ctx) => tools.stabilize(m, ctx),
+  voice: (m, b) => {
+    const effect = b.effect;
+    if (!tools.isVoiceEffect(effect)) throw new HttpError(400, `\`effect\` must be one of ${Object.keys(tools.VOICE_EFFECTS).join(', ')}`);
+    return (ctx) => tools.voice(m, effect, ctx);
+  },
 };
+
+/** Text to speech is the one tool that starts from text rather than from media. */
+function ttsJob(body: Record<string, unknown>) {
+  const text = typeof body.text === 'string' ? body.text.trim() : '';
+  if (!text) throw new HttpError(400, '`text` is required');
+  if (text.length > tools.TTS_MAX_CHARS) throw new HttpError(400, `\`text\` is ${text.length} characters; the limit is ${tools.TTS_MAX_CHARS}`);
+  if (body.language !== undefined && body.language !== 'hi' && body.language !== 'en') throw new HttpError(400, "`language` must be 'hi' or 'en'");
+  const language = body.language as 'hi' | 'en' | undefined;
+  return (ctx: JobContext) => tools.tts(text, language, ctx);
+}
 
 async function route(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -116,7 +132,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return;
   }
   if (method === 'GET' && url.pathname === '/health') {
-    return json(res, 200, { ok: true, whisper: tools.whisperSetup().ready, ...(missingFonts.size ? { missingFonts: [...missingFonts] } : {}) });
+    return json(res, 200, { ok: true, whisper: tools.whisperSetup().ready, tts: tools.ttsSetup().ready, ...(missingFonts.size ? { missingFonts: [...missingFonts] } : {}) });
   }
 
   if (parts[0] === 'media') {
@@ -150,9 +166,9 @@ async function route(req: IncomingMessage, res: ServerResponse) {
 
   if (method === 'POST' && parts[0] === 'tools' && parts.length === 2) {
     const tool = TOOLS[parts[1]];
-    if (!tool) throw new HttpError(404, `unknown tool "${parts[1]}"`);
+    if (!tool && parts[1] !== 'tts') throw new HttpError(404, `unknown tool "${parts[1]}"`);
     const body = await readJson(req);
-    const work = tool(await requireMedia(body.mediaId), body);
+    const work = tool ? tool(await requireMedia(body.mediaId), body) : ttsJob(body);
     return json(res, 200, { jobId: enqueue(parts[1], work).id });
   }
 

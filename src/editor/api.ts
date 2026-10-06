@@ -18,6 +18,9 @@ type Job = { status: 'queued' | 'running' | 'done' | 'error'; progress: number; 
 
 export class ServerError extends Error {}
 
+export const VOICE_EFFECTS = ['deep', 'chipmunk', 'robot', 'echo', 'telephone'] as const;
+export type VoiceEffect = (typeof VOICE_EFFECTS)[number];
+
 const MIME: Record<string, string> = { mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/mp4', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav', aac: 'audio/aac' };
 
 async function call<T>(path: string, init?: Parameters<typeof fetch>[1]): Promise<T> {
@@ -35,7 +38,7 @@ const post = <T>(path: string, body: unknown) => call<T>(path, { method: 'POST',
 
 export async function health() {
   try {
-    return await call<{ ok: boolean; whisper: boolean }>('/health');
+    return await call<{ ok: boolean; whisper: boolean; tts?: boolean }>('/health');
   } catch {
     return null;
   }
@@ -114,6 +117,9 @@ export const tools = {
   denoise: async (asset: Asset, onProgress?: (p: number) => void) => mediaTool('/tools/denoise', { mediaId: await remoteId(asset) }, `${asset.name ?? 'Clip'} (clean audio)`, onProgress),
   silence: async (asset: Asset) => (await runJob('/tools/silence', { mediaId: await remoteId(asset) })).result.ranges as { start: number; end: number }[],
   beats: async (asset: Asset) => (await runJob('/tools/beats', { mediaId: await remoteId(asset) })).result.beats as number[],
-  transcribe: async (asset: Asset, language?: string, onProgress?: (p: number) => void) =>
-    (await runJob('/tools/transcribe', { mediaId: await remoteId(asset), language }, onProgress)).result as { words: CaptionWord[]; language: string },
+  transcribe: async (asset: Asset, options: { language?: string; translate?: boolean } = {}, onProgress?: (p: number) => void) =>
+    (await runJob('/tools/transcribe', { mediaId: await remoteId(asset), ...options }, onProgress)).result as { words: CaptionWord[]; language: string },
+  stabilize: async (asset: Asset, onProgress?: (p: number) => void) => mediaTool('/tools/stabilize', { mediaId: await remoteId(asset) }, `${asset.name ?? 'Clip'} (stabilized)`, onProgress),
+  voice: async (asset: Asset, effect: VoiceEffect, onProgress?: (p: number) => void) => mediaTool('/tools/voice', { mediaId: await remoteId(asset), effect }, `${asset.name ?? 'Clip'} (${effect} voice)`, onProgress),
+  speak: (text: string) => mediaTool('/tools/tts', { text }, text.slice(0, 24)),
 };

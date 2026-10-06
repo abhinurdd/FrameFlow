@@ -7,7 +7,7 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AudioTracks } from '@/editor/audio';
-import { health, ServerError, tools } from '@/editor/api';
+import { health, ServerError, tools, VOICE_EFFECTS, type VoiceEffect } from '@/editor/api';
 import { EditCanvas } from '@/editor/canvas';
 import { ExportSheet } from '@/editor/export-sheet';
 import {
@@ -17,8 +17,10 @@ import {
   BlendPanel,
   CanvasPanel,
   CaptionStylePanel,
+  ChoicePanel,
   EffectsPanel,
   FiltersPanel,
+  PromptPanel,
   SpeedPanel,
   StickerPanel,
   TextPanel,
@@ -51,6 +53,7 @@ import {
   parseSrt,
   patchItem,
   patchSegment,
+  rampSegment,
   removeItem,
   removeSegment,
   replaceSegmentAsset,
@@ -73,7 +76,7 @@ import { uid, useEdits } from '@/state/edits';
 import { Button, Row, T } from '@/ui/primitives';
 import { colors, fonts } from '@/ui/theme';
 
-type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | null;
+type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | 'tts' | 'voice' | null;
 type ToolDef = { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; disabled?: boolean; on?: boolean };
 
 const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'er', 'matlab', 'basically', 'actually', 'yaar', 'like', 'मतलब', 'यार', 'अं', 'हम्म']);
@@ -348,6 +351,27 @@ export default function Editor() {
       apply(replaceSegmentAsset(current(), seg.id, clean, { in: seg.in, out: seg.out }));
     });
 
+  const stabilizeClip = (seg: Segment, asset: Asset) =>
+    run('Stabilizing', async (p) => {
+      const steady = await tools.stabilize(asset, p);
+      apply(replaceSegmentAsset(current(), seg.id, steady, { in: seg.in, out: seg.out }));
+    });
+
+  const changeVoice = (seg: Segment, asset: Asset, effect: VoiceEffect) =>
+    run('Changing voice', async (p) => {
+      const voiced = await tools.voice(asset, effect, p);
+      apply(replaceSegmentAsset(current(), seg.id, voiced, { in: seg.in, out: seg.out }));
+    });
+
+  const speak = (text: string) =>
+    run('Generating speech', async () => {
+      const speech = await tools.speak(text);
+      const item = newAudio(uid('aud'), time, speech, 'voiceover');
+      apply(addItem(addAssets(current(), [speech]), 'audio', item));
+      setSelection({ track: 'audio', id: item.id });
+      setPanel(null);
+    });
+
   /** Map something timed against source files onto the timeline, clip by clip. */
   async function acrossClips<T>(fetchFor: (asset: Asset) => Promise<T[]>, place: (item: T, toTimeline: (sourceTime: number) => number, seg: Segment) => void) {
     const e = current();
@@ -361,14 +385,14 @@ export default function Editor() {
     }
   }
 
-  const autoCaptions = () =>
-    run('Transcribing', async (p) => {
+  const autoCaptions = (translate = false) =>
+    run(translate ? 'Translating' : 'Transcribing', async (p) => {
       const status = await health();
       if (!status) throw new ServerError('The media server is not running. Start it with "npm run server" in pipeline/.');
       if (!status.whisper) throw new ServerError('Speech recognition is not set up on the media server yet. See pipeline/README.md.');
       const words: CaptionWord[] = [];
       await acrossClips(
-        async (asset) => (await tools.transcribe(asset, undefined, p)).words,
+        async (asset) => (await tools.transcribe(asset, { translate }, p)).words,
         (w, at, seg) => {
           if (w.t0 >= seg.in && w.t0 < seg.out) words.push({ text: w.text, t0: at(w.t0), t1: at(Math.min(w.t1, seg.out)) });
         },
@@ -465,6 +489,8 @@ export default function Editor() {
             { icon: 'snow-outline', label: 'Freeze', onPress: () => here && freezeFrame(asset, here.sourceTime) },
             { icon: 'musical-note-outline', label: 'Extract audio', onPress: () => extractAudio(selSegment, asset, starts[index]) },
             { icon: 'mic-off-outline', label: 'Denoise', onPress: () => cleanAudio(selSegment, asset) },
+            opens('voice', 'person-outline', 'Voice'),
+            { icon: 'videocam-outline', label: 'Stabilize', onPress: () => stabilizeClip(selSegment, asset) },
           ] satisfies ToolDef[])
         : []),
       {
@@ -512,7 +538,9 @@ export default function Editor() {
   let body: React.ReactNode = null;
   if (panel === 'filters' && lookOwner) body = <FiltersPanel look={lookOwner.look} onChange={setLook} onApplyAll={selOverlay ? undefined : () => apply({ ...edit, main: edit.main.map((s) => ({ ...s, look: lookOwner.look })) })} />;
   else if (panel === 'adjust' && lookOwner) body = <AdjustPanel look={lookOwner.look} onChange={setLook} />;
-  else if (panel === 'speed' && selSegment) body = <SpeedPanel speed={selSegment.speed} onChange={(speed) => apply(patchSegment(edit, selSegment.id, { speed }))} />;
+  else if (panel === 'speed' && selSegment) body = <SpeedPanel speed={selSegment.speed} onChange={(speed) => apply(patchSegment(edit, selSegment.id, { speed }))} onRamp={(speeds) => apply(rampSegment(edit, selSegment.id, speeds, () => uid('seg')), visualStart)} />;
+  else if (panel === 'voice' && selSegment && targetAsset) body = <ChoicePanel label="Voice" options={VOICE_EFFECTS} onPick={(effect) => changeVoice(selSegment, targetAsset, effect)} />;
+  else if (panel === 'tts') body = <PromptPanel placeholder="Type what should be spoken" action="Speak" busy={!!busy} onSubmit={speak} />;
   else if (panel === 'volume' && selSegment) body = <VolumePanel sound={selSegment} onChange={(p, commit) => change(patchSegment(edit, selSegment.id, p), commit)} />;
   else if (panel === 'volume' && selOverlay) body = <VolumePanel sound={{ volume: selOverlay.volume, muted: selOverlay.muted }} onChange={(p, commit) => change(patchItem(edit, 'overlays', selOverlay.id, p), commit)} />;
   else if (panel === 'volume' && selAudio) body = <VolumePanel sound={selAudio} onChange={(p, commit) => change(patchItem(edit, 'audio', selAudio.id, p), commit)} />;
@@ -578,7 +606,8 @@ export default function Editor() {
     body = (
       <ActionsPanel
         actions={[
-          { label: 'Auto captions', icon: 'flash-outline', onPress: autoCaptions, busy: !!busy },
+          { label: 'Auto captions', icon: 'flash-outline', onPress: () => autoCaptions(), busy: !!busy },
+          { label: 'Captions in English', icon: 'language-outline', onPress: () => autoCaptions(true), busy: !!busy },
           {
             label: 'Add a line',
             icon: 'add-outline',
@@ -599,7 +628,8 @@ export default function Editor() {
     body = (
       <ActionsPanel
         actions={[
-          { label: 'Auto captions', icon: 'chatbox-ellipses-outline', onPress: autoCaptions, busy: !!busy },
+          { label: 'Auto captions', icon: 'chatbox-ellipses-outline', onPress: () => autoCaptions(), busy: !!busy },
+          { label: 'Text to speech', icon: 'megaphone-outline', onPress: () => setPanel('tts') },
           { label: 'Remove silences', icon: 'remove-circle-outline', onPress: removeSilences, busy: !!busy },
           { label: 'Remove filler words', icon: 'close-circle-outline', onPress: removeFillers },
           // Markers come from "Beats" on a music clip, or from the Marker tool.

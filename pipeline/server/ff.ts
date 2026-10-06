@@ -12,6 +12,8 @@ export type RunOptions = {
   duration?: number;
   /** Collect stdout as binary instead of text. */
   binary?: boolean;
+  /** Working directory for the child. */
+  cwd?: string;
 };
 
 export type RunResult = { stdout: string; stderr: string; data: Buffer };
@@ -24,7 +26,7 @@ function tail(text: string, lines = 12) {
 /** Run a command to completion. Rejects with the tail of stderr on a non-zero exit. */
 export function run(cmd: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: options.cwd });
     const out: Buffer[] = [];
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => out.push(c));
@@ -46,8 +48,9 @@ export function run(cmd: string, args: string[], options: RunOptions = {}): Prom
 export function ffmpeg(args: string[], options: RunOptions = {}): Promise<RunResult> {
   if (!options.onProgress || !options.duration) return run(FFMPEG, ['-hide_banner', '-nostdin', '-y', ...args], options);
   const { onProgress, duration } = options;
+  // Paths in `args` must be absolute when `cwd` is set.
   return new Promise((resolve, reject) => {
-    const child = spawn(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-nostats', '-progress', 'pipe:1', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-nostats', '-progress', 'pipe:1', ...args], { stdio: ['ignore', 'pipe', 'pipe'], cwd: options.cwd });
     let stderr = '';
     child.stdout.on('data', (c: Buffer) => {
       const m = [...c.toString().matchAll(/out_time_us=(\d+)/g)].pop();

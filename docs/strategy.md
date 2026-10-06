@@ -2,7 +2,7 @@
 
 **Owner of tech:** Claude (end to end).
 **Last updated:** 2026-10-06.
-**Evidence base:** [research/competitive-teardown.md](research/competitive-teardown.md), [research/vn-feature-inventory.md](research/vn-feature-inventory.md).
+**Evidence base:** [research/competitive-teardown.md](research/competitive-teardown.md), [research/vn-feature-inventory.md](research/vn-feature-inventory.md), [research/ai-editor-benchmark.md](research/ai-editor-benchmark.md).
 
 Living document. Update it when a decision is made or a phase finishes.
 
@@ -123,10 +123,11 @@ The user decided on 2026-10-06 that FrameFlow is a full AI video editor with VN'
 
 | Step | Scope | Status |
 |---|---|---|
-| **E1. Cut editor** | Import, magnetic main track, split, trim, delete, duplicate, reorder, speed, volume, rotate/flip, aspect ratio, text, undo/redo, drafts, live preview | Built (runs in Expo Go) |
-| **E2. Compositor and export** | A frame-accurate compositor shared by preview and export. Unlocks export, transitions, filters and adjust, crop, PiP and stickers, audio tracks, freeze and reverse. Needs a development build | Not started |
-| **E3. Motion and colour** | Keyframes with easing, curve speed, masks, chroma key, blend modes, FX, LUTs, text animation | Not started |
-| **E4. AI in the editor** | Hinglish auto captions, filler and silence removal, cutout, denoise, and AI clipping feeding straight into the timeline | Not started |
+| **E1. Cut editor** | Import, magnetic main track, split, trim, delete, duplicate, reorder, speed, volume, rotate/flip, aspect ratio, text, undo/redo, drafts, live preview | Done |
+| **E2. Multi-track editor and export** | Overlays, stickers, styled text, captions, audio tracks, effects, transitions, keyframes, animations, filters and adjust. Export through the media server | Built; runs in Expo Go with the server on the development Mac |
+| **E3. AI in the editor** | Auto captions, silence and filler removal, denoise, voice effects, text to speech, beat detection, stabilise, reverse, freeze | Built on the media server; captions and silence removal verified end to end |
+| **E4. Production readiness** | Deploy the media server, on-device or queued background export, real AI clipping into the editor, Hinglish ASR choice | Not started |
+| **E5. Shader compositor** | Chroma key, custom speed curves, more masks, blur backgrounds in preview, smoother playback. Needs a development build | Not started |
 
 **Explicitly not doing:** generative video, AI avatars, dubbing (Meta and YouTube give it away).
 
@@ -137,7 +138,7 @@ The user decided on 2026-10-06 that FrameFlow is a full AI video editor with VN'
    - **Needs the user's stance on how far we go to serve clippers.**
 2. **Unit economics.** ASR, LLM and reframe cost per hour of source. Phase 0 must prove the margin before pricing is locked.
 3. **Platform risk.** YouTube or Meta shipping free clipping. Defense: cross-platform posting plus agency workflows.
-4. **Pending from the user:** cloud provider and budget, iOS/Android bundle ID, and the go-ahead for Phase 0.
+4. **Pending from the user:** cloud provider and budget (now also needed to host the media server), confirmation of the bundle ID `club.nurdd.frameflow`, and the Supabase anon key for project `mxckperbdkugmviqfnzl` (it is empty in `.env.local`, so the app runs in demo mode).
 
 ## Decision log
 
@@ -150,3 +151,9 @@ The user decided on 2026-10-06 that FrameFlow is a full AI video editor with VN'
 - 2026-10-06: **Direction change from the user:** FrameFlow is an advanced AI video editor with VN's full feature set. This reverses the earlier "match VN's gestures, not its depth" call. AI clipping stays as the differentiator VN lacks.
 - 2026-10-06: The manual editor's document is an `Edit` (`src/engine/timeline.ts`): one JSON per project, and every tool is a pure function on it, the same principle as Clip Spec. Step E1 is built on it.
 - 2026-10-06: E1 previews by hopping one `expo-video` player between segments. That cannot do overlays, transitions, filters or export, so E2 needs a real compositor and a development build. The choice of compositor (Skia on device plus native AVFoundation/Media3 export, versus server render) is still open and should be prototyped before E2 starts.
+- 2026-10-06: Benchmark changed from VN to CapCut after the user asked for the best AI editor's feature set. Parity is tracked in `docs/research/ai-editor-benchmark.md`.
+- 2026-10-06: **Preview architecture.** A JavaScript clock drives two `expo-video` players (current and next clip) for gapless cuts and transitions. Everything else is React Native layers over the video: overlays, text, captions, effects. Filters and adjust are flat colour layers with `mixBlendMode`, which blends correctly over video on iOS (Android not yet checked). This runs in Expo Go.
+- 2026-10-06: **Export architecture.** `pipeline/server` renders an Edit frame by frame in Node (ffmpeg decode, Skia canvas via `@napi-rs/canvas`, libx264 encode) and imports `src/engine` directly, so timing, animation and colour maths are shared with the preview. Measured on the development Mac: 0.35 s of work per second of 1080×1920 output for video with captions, up to 1.3 s with a look, overlay and effect.
+- 2026-10-06: **Auto captions** use whisper.cpp (`large-v3-turbo`, quantised) on the media server. It works for Hindi with word timings but writes English loan words in Devanagari, so it is a stopgap until the ASR bakeoff picks a provider.
+- 2026-10-06: Speed ramps are stepped (a clip is cut into parts at different speeds) so preview and export stay identical. Smooth custom curves wait for E5.
+- 2026-10-06: Sign in with Apple added in code (native, iOS only). It needs the bundle ID registered with Apple and enabled in Supabase before it works outside demo mode.

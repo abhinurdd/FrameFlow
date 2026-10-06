@@ -4,7 +4,7 @@ import { Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { ANIMATIONS, EFFECTS, IDENTITY, TRANSITIONS, type Animation, type EffectId, type Transform, type Transition } from '@/engine/animate';
 import { ADJUST_SLIDERS, FILTERS, NO_ADJUST, type Look } from '@/engine/looks';
-import { ASPECTS, BLEND_MODES, FONTS, SPEEDS, type Background, type BlendMode, type CaptionStyle, type EditAspect, type Fit, type Mask, type TextStyle } from '@/engine/timeline';
+import { ASPECTS, BLEND_MODES, FONTS, SPEED_RAMPS, SPEEDS, type Background, type BlendMode, type CaptionStyle, type EditAspect, type Fit, type Mask, type TextStyle } from '@/engine/timeline';
 import { Chip, Row, Segmented, T } from '@/ui/primitives';
 import { TEMPLATES } from '@/ui/templates';
 import { colors, fonts } from '@/ui/theme';
@@ -87,11 +87,48 @@ export function AdjustPanel({ look, onChange }: { look: Look; onChange: Change<L
   );
 }
 
-export function SpeedPanel({ speed, onChange }: { speed: number; onChange: (s: number) => void }) {
+export function SpeedPanel({ speed, onChange, onRamp }: { speed: number; onChange: (s: number) => void; onRamp: (speeds: number[]) => void }) {
+  return (
+    <View style={{ gap: 8 }}>
+      <Strip>
+        {SPEEDS.map((s) => (
+          <Chip key={s} label={`${s}x`} selected={speed === s} onPress={() => onChange(s)} />
+        ))}
+      </Strip>
+      <Strip>
+        <T variant="muted">Ramps</T>
+        {SPEED_RAMPS.map((r) => (
+          <Chip key={r.id} label={r.name} onPress={() => onRamp(r.speeds)} />
+        ))}
+      </Strip>
+    </View>
+  );
+}
+
+/** A text box with one action button: used for text to speech. */
+export function PromptPanel({ placeholder, action, busy, onSubmit }: { placeholder: string; action: string; busy?: boolean; onSubmit: (text: string) => void }) {
+  const [text, setText] = useState('');
+  return (
+    <Row style={{ paddingHorizontal: 14 }} gap={8}>
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        multiline
+        placeholder={placeholder}
+        placeholderTextColor={colors.textDim}
+        style={{ flex: 1, minHeight: 40, maxHeight: 76, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: colors.surface2, color: colors.text, fontFamily: fonts.medium }}
+      />
+      <Chip label={action} selected onPress={() => !busy && text.trim() && onSubmit(text.trim())} />
+    </Row>
+  );
+}
+
+export function ChoicePanel<V extends string>({ label, options, onPick }: { label: string; options: readonly V[]; onPick: (v: V) => void }) {
   return (
     <Strip>
-      {SPEEDS.map((s) => (
-        <Chip key={s} label={`${s}x`} selected={speed === s} onPress={() => onChange(s)} />
+      <T variant="muted">{label}</T>
+      {options.map((o) => (
+        <Chip key={o} label={o[0].toUpperCase() + o.slice(1)} onPress={() => onPick(o)} />
       ))}
     </Strip>
   );

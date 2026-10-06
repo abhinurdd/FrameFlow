@@ -363,6 +363,40 @@ export function trimSegment(edit: Edit, id: string, to: { in?: number; out?: num
   return patchSegment(edit, id, { in: nextIn, out: nextOut });
 }
 
+export const SPEED_RAMPS: { id: string; name: string; speeds: number[] }[] = [
+  { id: 'montage', name: 'Montage', speeds: [1, 3, 0.5, 3, 1] },
+  { id: 'hero', name: 'Hero', speeds: [1.5, 0.4, 1.5] },
+  { id: 'bullet', name: 'Bullet', speeds: [3, 0.3, 3] },
+  { id: 'flash-in', name: 'Flash in', speeds: [3, 1.5, 1] },
+  { id: 'flash-out', name: 'Flash out', speeds: [1, 1.5, 3] },
+  { id: 'jump', name: 'Jump cut', speeds: [1, 4, 1, 4, 1] },
+];
+
+/**
+ * Speed ramp: cut a segment into equal parts of its source, each at its own speed.
+ * Ramps are stepped rather than smooth, which keeps preview and export identical.
+ */
+export function rampSegment(edit: Edit, id: string, speeds: number[], makeId: () => string): Edit {
+  const i = edit.main.findIndex((s) => s.id === id);
+  const s = edit.main[i];
+  if (!s || (s.out - s.in) / speeds.length < MIN_SEGMENT * Math.max(...speeds)) return edit;
+  const part = (s.out - s.in) / speeds.length;
+  const pieces = speeds.map((speed, k): Segment => ({
+    ...s,
+    id: k === 0 ? s.id : makeId(),
+    in: s.in + k * part,
+    out: s.in + (k + 1) * part,
+    speed,
+    keyframes: [],
+    fadeIn: k === 0 ? s.fadeIn : 0,
+    fadeOut: k === speeds.length - 1 ? s.fadeOut : 0,
+    transition: k === speeds.length - 1 ? s.transition : null,
+  }));
+  const main = [...edit.main];
+  main.splice(i, 1, ...pieces);
+  return { ...edit, main };
+}
+
 export function removeSegment(edit: Edit, id: string): Edit {
   return { ...edit, main: edit.main.filter((s) => s.id !== id) };
 }
