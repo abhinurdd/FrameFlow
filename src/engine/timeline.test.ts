@@ -6,6 +6,8 @@ import {
   captionsFromWords,
   cutCaptionWords,
   cutRanges,
+  deleteSegment,
+  duplicateItem,
   duplicateSegment,
   locate,
   mainFrameAt,
@@ -15,6 +17,7 @@ import {
   addItem,
   parseSrt,
   rampSegment,
+  rippleCut,
   relink,
   patchSegment,
   removeSegment,
@@ -174,4 +177,56 @@ test('transcript editing cuts the word and the video together', () => {
   const swapped = swapCaptionScript(base);
   expect(swapped.captions[0].text).toBe('तो पैसा kamao');
   expect(swapCaptionScript(swapped).captions[0].text).toBe('toh paisa kamao');
+});
+
+test('cuts never shift items without removing video', () => {
+  let n = 0;
+  const id = () => `x${n++}`;
+  const base = addItem(edit, 'texts', newText('t1', 12));
+  // A cut 0.1 s short of the clip end is widened to the edge, and the shift matches what was removed.
+  const tail = rippleCut(base, [{ start: 8.1, end: 9.95 }], id);
+  expect(totalDuration(tail)).toBeCloseTo(12.1);
+  expect(tail.texts[0].start).toBeCloseTo(10.1);
+  // Overlapping ranges are counted once.
+  const merged = rippleCut(base, [{ start: 0.5, end: 1.5 }, { start: 1, end: 2 }], id);
+  expect(totalDuration(merged)).toBeCloseTo(12.5);
+  expect(merged.texts[0].start).toBeCloseTo(10.5);
+  // Across a transition the video still gets shorter by exactly what the items move.
+  const faded = setTransition(base, 's1', { type: 'fade', duration: 1 });
+  const across = rippleCut(faded, [{ start: 8.2, end: 9.6 }], id);
+  expect(totalDuration(faded) - totalDuration(across)).toBeCloseTo(12 - across.texts[0].start);
+});
+
+test('cutting a word retimes the words after it', () => {
+  const caption = { id: 'c1', start: 1, duration: 2, text: 'yeh matlab sahi hai', words: [{ t0: 0, t1: 0.5, text: 'yeh' }, { t0: 0.5, t1: 1, text: 'matlab' }, { t0: 1, t1: 1.5, text: 'sahi' }, { t0: 1.5, t1: 2, text: 'hai' }] };
+  const cut = cutCaptionWords(addItem(edit, 'captions', caption), (w) => w.text === 'matlab', () => 'k');
+  expect(cut.captions[0]).toMatchObject({ start: 1, duration: 1.5, text: 'yeh sahi hai' });
+  expect(cut.captions[0].words!.map((w) => [w.t0, w.t1])).toEqual([[0, 0.5], [0.5, 1], [1, 1.5]]);
+});
+
+test('deleting a clip takes its items and shifts the rest by the real gap', () => {
+  const faded = setTransition(appendAssets(edit, [{ ...a, id: 'c', duration: 5 }], ['s3']), 's2', { type: 'fade', duration: 1 });
+  // s1 0-10, s2 10-14, s3 13-18. A text 2 s into s3, one over s2.
+  const base = addItem(addItem(faded, 'texts', newText('late', 15)), 'texts', newText('gone', 11));
+  const out = deleteSegment(base, 's2');
+  expect(out.texts.map((t) => [t.id, t.start])).toEqual([['late', 12]]);
+  expect(totalDuration(out)).toBe(15);
+});
+
+test('items on a duplicated clip stay on the duplicate', () => {
+  const dup = addItem(duplicateSegment(edit, 's1', 'd'), 'texts', newText('t', 16));
+  expect(relink(dup, trimSegment(dup, 'd', { in: 3 })).texts[0].start).toBe(13);
+  let n = 0;
+  expect(relink(dup, rampSegment(dup, 'd', [2, 0.5], () => `r${n++}`)).texts[0].start).toBe(12.5 + 2);
+});
+
+test('split carries keyframed motion across the cut; copies stay reachable', () => {
+  const zoom = patchSegment(edit, 's1', { keyframes: setKeyframe(setKeyframe([], 0, IDENTITY, 'linear'), 10, { ...IDENTITY, scale: 2 }, 'linear'), animation: { ...NO_ANIMATION, in: 'fade', out: 'fade' } });
+  const [left, right] = splitAt(zoom, 5, 'r').main;
+  expect(transformAt(left, 5).scale).toBeCloseTo(1.5);
+  expect(transformAt(right, 0).scale).toBeCloseTo(1.5);
+  expect(transformAt(right, 5).scale).toBeCloseTo(2);
+  expect([left.animation.out, right.animation.in]).toEqual(['none', 'none']);
+  const late = addItem(edit, 'texts', { ...newText('t', 12), duration: 2 });
+  expect(duplicateItem(late, 'texts', 't', 'u').texts[1].start).toBeLessThan(14);
 });

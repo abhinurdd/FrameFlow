@@ -13,7 +13,7 @@
  *   texts, captions, effects.
  */
 
-import { IDENTITY, NO_ANIMATION, type Animation, type EffectId, type Keyframe, type Transform, type Transition } from './animate';
+import { IDENTITY, NO_ANIMATION, transformAt, type Animation, type EffectId, type Keyframe, type Transform, type Transition } from './animate';
 import { NO_LOOK, type Look } from './looks';
 import type { TemplateId } from './types';
 
@@ -340,6 +340,17 @@ export function appendAssets(edit: Edit, assets: Asset[], segmentIds: string[]):
   return { ...addAssets(edit, assets), main: [...edit.main, ...assets.map((a, i) => newSegment(segmentIds[i], a))] };
 }
 
+/** Keyframes for the two halves of an item cut `offset` seconds in, so motion carries across the cut. */
+function splitKeyframes(item: { transform: Transform; keyframes: Keyframe[] }, offset: number): [Keyframe[], Keyframe[]] {
+  if (!item.keyframes.length) return [[], []];
+  const at = transformAt(item, offset);
+  const ease = item.keyframes.filter((k) => k.t <= offset).pop()?.ease ?? 'in-out';
+  return [
+    [...item.keyframes.filter((k) => k.t < offset - 0.001), { ...at, t: offset, ease }],
+    [{ ...at, t: 0, ease }, ...item.keyframes.filter((k) => k.t > offset + 0.001).map((k) => ({ ...k, t: k.t - offset }))],
+  ];
+}
+
 /** Cut the segment under `t` in two. No-op when the cut would leave a sliver. */
 export function splitAt(edit: Edit, t: number, newId: string): Edit {
   const loc = locate(edit, t);
@@ -347,8 +358,10 @@ export function splitAt(edit: Edit, t: number, newId: string): Edit {
   const { segment, index, sourceTime, offset } = loc;
   const min = MIN_SEGMENT * segment.speed;
   if (sourceTime - segment.in < min || segment.out - sourceTime < min) return edit;
-  const left: Segment = { ...segment, out: sourceTime, transition: null, fadeOut: 0, keyframes: segment.keyframes.filter((k) => k.t <= offset) };
-  const right: Segment = { ...segment, id: newId, in: sourceTime, fadeIn: 0, keyframes: segment.keyframes.filter((k) => k.t > offset).map((k) => ({ ...k, t: k.t - offset })) };
+  const [before, after] = splitKeyframes(segment, offset);
+  // The in animation stays with the first half and the out animation with the second.
+  const left: Segment = { ...segment, out: sourceTime, transition: null, fadeOut: 0, keyframes: before, animation: { ...segment.animation, out: 'none' } };
+  const right: Segment = { ...segment, id: newId, in: sourceTime, fadeIn: 0, keyframes: after, animation: { ...segment.animation, in: 'none' } };
   const main = [...edit.main];
   main.splice(index, 1, left, right);
   return { ...edit, main };
@@ -368,6 +381,8 @@ export function trimSegment(edit: Edit, id: string, to: { in?: number; out?: num
   const sourceEnd = asset.kind === 'image' ? Math.max(s.out, to.out ?? 0, 600) : asset.duration;
   // When only the in point moves it stops short of the out point, rather than pushing it.
   const inMax = (to.out === undefined ? s.out : sourceEnd) - min;
+  // A still has no in point: dragging its left edge just makes it shorter or longer.
+  if (asset.kind === 'image' && to.in !== undefined) return patchSegment(edit, id, { in: 0, out: Math.max(min, s.out - (to.in - s.in)) });
   const nextIn = asset.kind === 'image' ? 0 : Math.min(Math.max(to.in ?? s.in, 0), inMax);
   const nextOut = Math.min(Math.max(to.out ?? s.out, nextIn + min), sourceEnd);
   return patchSegment(edit, id, { in: nextIn, out: nextOut });
@@ -398,6 +413,7 @@ export function rampSegment(edit: Edit, id: string, speeds: number[], makeId: ()
     out: s.in + (k + 1) * part,
     speed,
     keyframes: [],
+    animation: { ...s.animation, in: k === 0 ? s.animation.in : 'none', out: k === speeds.length - 1 ? s.animation.out : 'none' },
     fadeIn: k === 0 ? s.fadeIn : 0,
     fadeOut: k === speeds.length - 1 ? s.fadeOut : 0,
     transition: k === speeds.length - 1 ? s.transition : null,
@@ -485,16 +501,22 @@ export function removeItem(edit: Edit, track: TrackId, id: string): Edit {
   return { ...edit, [track]: edit[track].filter((i) => i.id !== id) };
 }
 
+/** Latest start that keeps an item reachable: items past the end of the video never play. */
+function clampStart(edit: Edit, start: number) {
+  const end = mainDuration(edit);
+  return Math.max(0, end > 0 ? Math.min(start, end - 2 * MIN_SEGMENT) : start);
+}
+
 export function duplicateItem(edit: Edit, track: TrackId, id: string, newId: string): Edit {
   const item = edit[track].find((i) => i.id === id);
   if (!item) return edit;
   const length = 'duration' in item ? item.duration : audioDuration(item);
-  return { ...edit, [track]: [...edit[track], { ...item, id: newId, start: item.start + length }] };
+  return { ...edit, [track]: [...edit[track], { ...item, id: newId, start: clampStart(edit, item.start + length) }] };
 }
 
 /** Slide an item along the timeline. */
 export function moveItem(edit: Edit, track: TrackId, id: string, start: number): Edit {
-  return patchItem(edit, track, id, { start: Math.max(0, start) });
+  return patchItem(edit, track, id, { start: clampStart(edit, start) });
 }
 
 /** Drag an item's left or right edge by `delta` timeline seconds. */
@@ -543,12 +565,15 @@ export function splitItem(edit: Edit, track: TrackId, id: string, t: number, new
     right = { ...it, id: newId, start: t, duration: it.duration - cut };
     if (track === 'overlays' && (it as Overlay).kind === 'video') (right as Overlay).in = (it as Overlay).in + cut;
     if ('keyframes' in it) {
-      (left as Overlay).keyframes = it.keyframes.filter((k) => k.t <= cut);
-      (right as Overlay).keyframes = it.keyframes.filter((k) => k.t > cut).map((k) => ({ ...k, t: k.t - cut }));
+      const [before, after] = splitKeyframes(it, cut);
+      Object.assign(left, { keyframes: before, animation: { ...it.animation, out: 'none' } });
+      Object.assign(right, { keyframes: after, animation: { ...it.animation, in: 'none' } });
     }
     if (track === 'captions') {
       const words = (it as Caption).words;
       if (words) {
+        // Cutting before the first word or after the last would leave an empty caption.
+        if (!words.some((w) => w.t0 < cut) || !words.some((w) => w.t0 >= cut)) return edit;
         (left as Caption).words = words.filter((w) => w.t0 < cut);
         (right as Caption).words = words.filter((w) => w.t0 >= cut).map((w) => ({ ...w, t0: w.t0 - cut, t1: w.t1 - cut }));
         (left as Caption).text = (left as Caption).words!.map((w) => w.text).join(' ');
@@ -559,29 +584,119 @@ export function splitItem(edit: Edit, track: TrackId, id: string, t: number, new
   return { ...edit, [track]: edit[track].flatMap((i) => (i.id === id ? [left, right] : [i])) };
 }
 
-/**
- * Remove ranges of the main track (silences, filler words) and close the gaps.
- * `ranges` are timeline seconds, sorted or not; ids are generated by `makeId`.
- */
-export function cutRanges(edit: Edit, ranges: { start: number; end: number }[], makeId: () => string): Edit {
-  let out = edit;
-  // Work from the end so earlier cuts do not shift later ones.
-  for (const r of [...ranges].sort((a, b) => b.start - a.start)) {
-    out = splitAt(out, r.end, makeId());
-    out = splitAt(out, r.start, makeId());
-    const starts = segmentStarts(out);
-    const doomed = out.main.filter((s, i) => starts[i] >= r.start - 0.001 && starts[i] + segmentDuration(s) <= r.end + 0.001);
-    out = { ...out, main: out.main.filter((s) => !doomed.includes(s)) };
+type Range = { start: number; end: number };
+
+function mergeRanges(ranges: Range[], end: number): Range[] {
+  const out: Range[] = [];
+  for (const r of [...ranges].sort((a, b) => a.start - b.start)) {
+    const range = { start: Math.max(0, r.start), end: Math.min(end, r.end) };
+    if (range.end - range.start <= 1e-6) continue;
+    const last = out[out.length - 1];
+    if (last && range.start <= last.end + 1e-6) last.end = Math.max(last.end, range.end);
+    else out.push(range);
   }
   return out;
 }
 
-/** `cutRanges`, plus everything on the free tracks slides left to stay in step with the picture. */
-export function rippleCut(edit: Edit, ranges: { start: number; end: number }[], makeId: () => string): Edit {
-  const cut = cutRanges(edit, ranges, makeId);
-  const shift = (t: number) => t - ranges.reduce((sum, r) => sum + Math.max(0, Math.min(t, r.end) - r.start), 0);
+/**
+ * Remove ranges of the main track and close the gaps. Returns the ranges that were
+ * really removed: a cut that would leave a sliver is widened to the clip's edge.
+ *
+ * Each segment "owns" the timeline from its start to the next segment's start, so
+ * during a transition a cut lands on the incoming clip, as it does on screen.
+ */
+function cutMain(edit: Edit, ranges: Range[], makeId: () => string): { edit: Edit; removed: Range[] } {
+  const removed: Range[] = [];
+  let out = edit;
+  // Work from the end so earlier cuts do not shift later ones.
+  for (const r of mergeRanges(ranges, mainDuration(edit)).reverse()) {
+    const starts = segmentStarts(out);
+    const main = [...out.main];
+    let from = Infinity;
+    for (let i = main.length - 1; i >= 0; i--) {
+      const s = main[i];
+      const st = starts[i];
+      const segEnd = st + segmentDuration(s);
+      const ownEnd = i + 1 < starts.length ? starts[i + 1] : segEnd;
+      const tail = segEnd - ownEnd > 1e-6;
+      let a = Math.max(r.start, st);
+      let b = Math.min(r.end, ownEnd);
+      if (b - a <= 1e-6) continue;
+      if (a - st < MIN_SEGMENT) a = st;
+      if (!tail && segEnd - b < MIN_SEGMENT) b = segEnd;
+      const source = (t: number) => s.in + (t - st) * s.speed;
+      const later = (offset: number) => s.keyframes.filter((k) => k.t >= offset).map((k) => ({ ...k, t: k.t - offset }));
+      if (a <= st && b >= ownEnd - 1e-6) {
+        main.splice(i, 1);
+        b = ownEnd;
+      } else if (a <= st) {
+        main[i] = { ...s, in: source(b), fadeIn: 0, keyframes: later(b - st), animation: { ...s.animation, in: 'none' } };
+      } else if (!tail && b >= segEnd - 1e-6) {
+        main[i] = { ...s, out: source(a), fadeOut: 0, transition: null, keyframes: s.keyframes.filter((k) => k.t <= a - st), animation: { ...s.animation, out: 'none' } };
+      } else {
+        const left: Segment = { ...s, out: source(a), fadeOut: 0, transition: null, keyframes: s.keyframes.filter((k) => k.t <= a - st), animation: { ...s.animation, out: 'none' } };
+        const right: Segment = { ...s, id: makeId(), in: source(b), fadeIn: 0, keyframes: later(b - st), animation: { ...s.animation, in: 'none' } };
+        main.splice(i, 1, left, right);
+      }
+      from = Math.min(from, a);
+    }
+    // Measured, not assumed: a cut next to a transition can change how long that transition runs.
+    const shorter = mainDuration(out) - mainDuration({ ...out, main });
+    if (shorter > 1e-6) removed.push({ start: from, end: from + shorter });
+    out = { ...out, main };
+  }
+  return { edit: out, removed: mergeRanges(removed, Infinity) };
+}
+
+export function cutRanges(edit: Edit, ranges: Range[], makeId: () => string): Edit {
+  return cutMain(edit, ranges, makeId).edit;
+}
+
+/** Slide everything on the free tracks left to close the given gaps. Captions shrink with the words inside them. */
+function closeGaps(edit: Edit, removed: Range[]): Edit {
+  if (!removed.length) return edit;
+  const shift = (t: number) => t - removed.reduce((sum, r) => sum + Math.max(0, Math.min(t, r.end) - r.start), 0);
   const move = <T extends { start: number }>(item: T): T => ({ ...item, start: shift(item.start) });
-  return { ...cut, overlays: cut.overlays.map(move), texts: cut.texts.map(move), captions: cut.captions.map(move), effects: cut.effects.map(move), audio: cut.audio.map(move), markers: cut.markers.map(shift) };
+  const caption = (c: Caption): Caption => {
+    const start = shift(c.start);
+    const words = c.words?.map((w) => {
+      const t0 = shift(c.start + w.t0) - start;
+      return { ...w, t0, t1: Math.max(shift(c.start + w.t1) - start, t0 + 0.02) };
+    });
+    return { ...c, start, duration: Math.max(shift(c.start + c.duration) - start, MIN_SEGMENT), words };
+  };
+  return { ...edit, overlays: edit.overlays.map(move), texts: edit.texts.map(move), captions: edit.captions.map(caption), effects: edit.effects.map(move), audio: edit.audio.map(move), markers: edit.markers.map(shift) };
+}
+
+/** `cutRanges`, plus everything on the free tracks slides left to stay in step with the picture. */
+export function rippleCut(edit: Edit, ranges: Range[], makeId: () => string): Edit {
+  const cut = cutMain(edit, ranges, makeId);
+  return closeGaps(cut.edit, cut.removed);
+}
+
+/**
+ * Delete a clip. What was attached to it (text, captions, effects, overlays that start
+ * over it) goes with it, and everything after slides left.
+ */
+export function deleteSegment(edit: Edit, id: string): Edit {
+  const i = edit.main.findIndex((s) => s.id === id);
+  if (i < 0) return edit;
+  const starts = segmentStarts(edit);
+  const from = starts[i];
+  const to = i + 1 < starts.length ? starts[i + 1] : mainDuration(edit);
+  const after = removeSegment(edit, id);
+  // Measured, not assumed: transitions around the clip change how much shorter the video gets.
+  const gap = mainDuration(edit) - mainDuration(after);
+  const keep = <T extends { start: number }>(items: T[]) => items.filter((x) => x.start < from - 1e-6 || x.start >= to - 1e-6).map((x) => (x.start >= to - 1e-6 ? { ...x, start: Math.max(0, x.start - gap) } : x));
+  return {
+    ...after,
+    overlays: keep(after.overlays),
+    texts: keep(after.texts),
+    captions: keep(after.captions),
+    effects: keep(after.effects),
+    audio: [...after.audio.filter((a) => a.kind === 'music'), ...keep(after.audio.filter((a) => a.kind !== 'music'))],
+    markers: after.markers.filter((m) => m < from || m >= to).map((m) => (m >= to ? m - gap : m)),
+  };
 }
 
 /**
@@ -593,15 +708,22 @@ export function relink(before: Edit, after: Edit): Edit {
   if (!before.main.length || !after.main.length) return after;
   const starts = segmentStarts(after);
   const end = mainDuration(before);
+  const existed = new Set(before.main.map((s) => s.id));
   const anchor = (t: number): { time: number; scale: number } | null => {
     const loc = locate(before, t);
     if (!loc || t >= end) return null;
     const src = loc.sourceTime;
     const old = loc.segment;
-    const holds = (s: Segment) => src >= s.in - 1e-6 && src <= s.out + 1e-6;
+    const holds = (s: Segment) => s.assetId === old.assetId && src >= s.in - 1e-6 && src <= s.out + 1e-6;
     const same = after.main.findIndex((s) => s.id === old.id);
-    // The same clip if it still shows this moment, else another piece cut from the same source.
-    const i = same >= 0 && holds(after.main[same]) ? same : after.main.findIndex((s) => s.assetId === old.assetId && holds(s));
+    // The same clip if it still shows this moment; else a piece newly cut from it (split, ramp).
+    // An older clip that happens to share the source (a duplicate) is never a candidate.
+    let i = same >= 0 && holds(after.main[same]) ? same : -1;
+    if (i < 0) {
+      const pieces = after.main.map((s, k) => k).filter((k) => holds(after.main[k]) && !existed.has(after.main[k].id));
+      const near = same >= 0 ? same : loc.index;
+      if (pieces.length) i = pieces.reduce((best, k) => (Math.abs(k - near) < Math.abs(best - near) ? k : best));
+    }
     if (i >= 0) return { time: starts[i] + (src - after.main[i].in) / after.main[i].speed, scale: old.speed / after.main[i].speed };
     if (same < 0) return null;
     // The moment was trimmed away: pin to the nearer edge of the clip.
@@ -654,17 +776,26 @@ const captionText = (words: CaptionWord[]) => words.map((w) => w.text).join(' ')
  * out of the video. Captions left with no words are dropped.
  */
 export function cutCaptionWords(edit: Edit, match: (word: CaptionWord, caption: Caption, index: number) => boolean, makeId: () => string): Edit {
-  const ranges: { start: number; end: number }[] = [];
-  const captions = edit.captions.flatMap((c) => {
-    if (!c.words) return [c];
-    const kept = c.words.filter((w, i) => {
-      const cut = match(w, c, i);
-      if (cut) ranges.push({ start: c.start + w.t0, end: c.start + w.t1 });
-      return !cut;
+  const ranges: Range[] = [];
+  const doomed = new Set<CaptionWord>();
+  for (const c of edit.captions) {
+    c.words?.forEach((w, i) => {
+      if (!match(w, c, i)) return;
+      doomed.add(w);
+      ranges.push({ start: c.start + w.t0, end: c.start + w.t1 });
     });
-    return kept.length ? [{ ...c, words: kept, text: captionText(kept) }] : [];
+  }
+  if (!ranges.length) return edit;
+  // Cut the video first, with the words still in place, so every caption is retimed against what was really removed.
+  const cut = cutMain(edit, ranges, makeId);
+  const closed = closeGaps({ ...cut.edit, captions: edit.captions }, cut.removed);
+  const captions = closed.captions.flatMap((c, k) => {
+    const before = edit.captions[k].words;
+    if (!before || !c.words) return [c];
+    const words = c.words.filter((_, i) => !doomed.has(before[i]));
+    return words.length ? [{ ...c, words, text: captionText(words) }] : [];
   });
-  return ranges.length ? rippleCut({ ...edit, captions }, ranges, makeId) : edit;
+  return { ...closed, captions };
 }
 
 export function patchCaptionWord(edit: Edit, captionId: string, index: number, patch: Partial<CaptionWord>): Edit {
