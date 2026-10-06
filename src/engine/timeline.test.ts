@@ -4,6 +4,7 @@ import {
   appendAssets,
   blankEdit,
   captionsFromWords,
+  cutCaptionWords,
   cutRanges,
   duplicateSegment,
   locate,
@@ -21,6 +22,7 @@ import {
   setTransition,
   splitAt,
   splitItem,
+  swapCaptionScript,
   totalDuration,
   trimItem,
   trimSegment,
@@ -155,4 +157,18 @@ test('relink keeps items over the same moment of the same clip', () => {
   expect(swapped.captions[0].start).toBe(8);
   // Trimming the head off pins a caption that lost its moment to the clip edge.
   expect(relink(base, trimSegment(base, 's1', { in: 6 })).captions[0].start).toBe(0);
+});
+
+test('transcript editing cuts the word and the video together', () => {
+  let n = 0;
+  const caption = { id: 'c1', start: 2, duration: 3, text: 'toh paisa kamao', words: [{ t0: 0, t1: 1, text: 'toh', alt: 'तो' }, { t0: 1, t1: 2, text: 'paisa', alt: 'पैसा' }, { t0: 2, t1: 3, text: 'kamao' }] };
+  const base = addItem(edit, 'captions', caption);
+  const cut = cutCaptionWords(base, (w) => w.text === 'toh', () => `k${n++}`);
+  expect(totalDuration(cut)).toBe(13);
+  expect(cut.captions[0]).toMatchObject({ start: 2, text: 'paisa kamao' });
+  expect(cut.main.map((s) => [s.in, s.out])).toEqual([[0, 2], [3, 10], [0, 4]]);
+  expect(cutCaptionWords(base, () => false, () => 'x')).toBe(base);
+  const swapped = swapCaptionScript(base);
+  expect(swapped.captions[0].text).toBe('तो पैसा kamao');
+  expect(swapCaptionScript(swapped).captions[0].text).toBe('toh paisa kamao');
 });

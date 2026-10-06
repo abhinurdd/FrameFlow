@@ -7,6 +7,7 @@ import { appendAssets, blankEdit, type Asset, type Edit } from '@/engine/timelin
 type State = {
   edits: Edit[];
   createEdit: (assets: Asset[]) => string;
+  addEdit: (edit: Edit) => void;
   setEdit: (edit: Edit) => void;
   deleteEdit: (id: string) => void;
 };
@@ -24,6 +25,10 @@ export const useEdits = create<State>()(
         const edit = appendAssets(blankEdit(uid('edt'), `Edit ${get().edits.length + 1}`, Date.now()), assets, assets.map(() => uid('seg')));
         set((s) => ({ edits: [edit, ...s.edits] }));
         return edit.id;
+      },
+
+      addEdit(edit) {
+        set((s) => (s.edits.some((e) => e.id === edit.id) ? s : { edits: [edit, ...s.edits] }));
       },
 
       setEdit(edit) {

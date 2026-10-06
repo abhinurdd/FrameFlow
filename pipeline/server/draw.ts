@@ -496,6 +496,8 @@ export class Painter {
     const deva = hasDevanagari(source.join(' '));
     const words = source.map((text, index) => ({ index, text: tpl.upper && !deva ? text.toUpperCase() : text }));
     const active = timed ? timed.findIndex((w) => local >= w.t0 && local < w.t1) : -1;
+    // Keywords stay highlighted, except in karaoke where only the spoken word is lit.
+    const lit = (index: number) => index === active || (style.template !== 'karaoke' && !!timed?.[index]?.emphasis);
 
     const unit = W / 360;
     const size = style.size * unit * tpl.size;
@@ -526,8 +528,7 @@ export class Painter {
     });
 
     if (tpl.box) {
-      const hit = placed.find((w) => w.index === active);
-      if (hit) {
+      for (const hit of placed.filter((w) => lit(w.index))) {
         ctx.fillStyle = SAFFRON;
         ctx.fillRect(hit.x - space / 2, hit.y - ascent, hit.w + space, ascent + descent);
       }
@@ -537,7 +538,7 @@ export class Painter {
     ctx.shadowOffsetY = 2 * unit;
     ctx.shadowBlur = 4 * unit;
     for (const w of placed) {
-      ctx.fillStyle = w.index === active && !tpl.box ? HIGHLIGHT : '#FFFFFF';
+      ctx.fillStyle = lit(w.index) && !tpl.box ? HIGHLIGHT : '#FFFFFF';
       ctx.fillText(w.text, w.x, w.y);
     }
     ctx.restore();

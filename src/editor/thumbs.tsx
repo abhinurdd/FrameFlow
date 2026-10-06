@@ -41,7 +41,7 @@ export function SegmentStrip({ asset, segment, width, height }: { asset: Asset; 
   const [thumbs, setThumbs] = useState<VideoThumbnail[]>([]);
   useEffect(() => {
     let alive = true;
-    if (asset.kind !== 'video') return;
+    if (asset.kind !== 'video' || asset.placeholder) return;
     loadThumbs(asset).then((t) => alive && setThumbs(t));
     return () => {
       alive = false;

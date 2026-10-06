@@ -45,6 +45,7 @@ export async function health() {
 }
 
 async function upload(asset: Asset): Promise<string> {
+  if (asset.placeholder) throw new ServerError('This video has not been downloaded to your phone yet, so it cannot be processed.');
   const ext = asset.uri.split('.').pop()?.toLowerCase() ?? '';
   const media = await call<RemoteMedia>('/media', {
     method: 'POST',

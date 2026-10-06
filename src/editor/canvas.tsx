@@ -10,7 +10,7 @@ import { combineEffects, effectAt, resolveTransform, transitionAt, type Layer, t
 import { compileLook, saturationLayer, type BlendLayer, type Look } from '@/engine/looks';
 import { activeAt, mainFrameAt, segmentDuration, segmentStarts, type Asset, type Caption, type CaptionStyle, type Edit, type Overlay, type Segment, type TextItem } from '@/engine/timeline';
 import type { Word } from '@/engine/types';
-import { CaptionLine } from '@/ui/clip-visual';
+import { CaptionLine, ClipFrame } from '@/ui/clip-visual';
 import { colors, hasDevanagari } from '@/ui/theme';
 
 import { fontFamily } from './fonts';
@@ -96,7 +96,14 @@ function MainLayer({
         <Pressable
           onPress={onPress}
           style={{ position: 'absolute', left: (canvas.w - fw) / 2 + t.x * canvas.w, top: (canvas.h - fh) / 2 + t.y * canvas.h, width: fw, height: fh, opacity: t.opacity, overflow: 'hidden', transform: [{ scale: t.scale }, { rotate: `${t.rotation}deg` }], borderWidth: selected ? 1.5 : 0, borderColor: SELECT }}>
-          {asset.kind === 'image' ? <Image source={{ uri: asset.uri }} style={media as ImageStyle} contentFit="fill" /> : <VideoView player={player} nativeControls={false} contentFit="fill" style={media} />}
+          {asset.placeholder ? (
+            // The video is not on this phone yet: show a stand-in so timing and captions can still be edited.
+            <ClipFrame tone={0} personSize={fw * 0.9} style={[media, { borderRadius: 0 }]} />
+          ) : asset.kind === 'image' ? (
+            <Image source={{ uri: asset.uri }} style={media as ImageStyle} contentFit="fill" />
+          ) : (
+            <VideoView player={player} nativeControls={false} contentFit="fill" style={media} />
+          )}
           <LookLayers look={segment.look} width={fw} height={fh} />
         </Pressable>
       </View>
@@ -202,11 +209,11 @@ function TextLayer({ item, time, canvas, nudge, selected, onPress }: { item: Tex
 function CaptionLayer({ caption, style, time, canvas, selected, onPress }: { caption: Caption; style: CaptionStyle; time: number; canvas: CanvasSize; selected: boolean; onPress: () => void }) {
   const local = time - caption.start;
   const source = caption.words ?? [{ t0: 0, t1: caption.duration, text: caption.text }];
-  const words: Word[] = source.map((w) => ({ t0: w.t0, t1: w.t1, speaker: 'A', text: { roman: w.text, devanagari: w.text } }));
+  const words: Word[] = source.map((w) => ({ t0: w.t0, t1: w.t1, speaker: 'A', text: { roman: w.text, devanagari: w.text }, emphasis: 'emphasis' in w ? w.emphasis : false }));
   const active = caption.words ? source.findIndex((w) => local >= w.t0 && local < w.t1) : -1;
   return (
     <Pressable onPress={onPress} style={{ position: 'absolute', left: canvas.w * 0.05, width: canvas.w * 0.9, top: style.y * canvas.h, transform: [{ translateY: '-50%' }], borderWidth: 1, borderStyle: 'dashed', borderColor: selected ? SELECT : 'transparent' }}>
-      <CaptionLine words={words} script={hasDevanagari(caption.text) ? 'devanagari' : 'roman'} template={style.template} fontSize={(style.size * canvas.w) / 360} activeIndex={active >= 0 ? active : undefined} autoEmphasis={false} />
+      <CaptionLine words={words} script={hasDevanagari(caption.text) ? 'devanagari' : 'roman'} template={style.template} fontSize={(style.size * canvas.w) / 360} activeIndex={active >= 0 ? active : undefined} />
     </Pressable>
   );
 }

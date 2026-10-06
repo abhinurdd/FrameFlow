@@ -39,7 +39,7 @@ export default function NewProject() {
   const [url, setUrl] = useState(params.url ?? '');
   const [s, setS] = useState<ProjectSettings>(defaults);
   const [saveDefault, setSaveDefault] = useState(false);
-  const [picked, setPicked] = useState<{ title: string; durationSec: number; uri: string } | null>(null);
+  const [picked, setPicked] = useState<{ title: string; durationSec: number; uri: string; width: number; height: number } | null>(null);
   const [picking, setPicking] = useState(false);
   const [touched, setTouched] = useState(false);
   const set = <K extends keyof ProjectSettings>(k: K, v: ProjectSettings[K]) => setS((prev) => ({ ...prev, [k]: v }));
@@ -56,7 +56,7 @@ export default function NewProject() {
     setPicking(true);
     try {
       const [video] = await pickMedia(['videos'], false);
-      if (video) setPicked({ title: video.name?.replace(/\.[^.]+$/, '') ?? 'My video', durationSec: Math.round(video.duration), uri: video.uri });
+      if (video) setPicked({ title: video.name?.replace(/\.[^.]+$/, '') ?? 'My video', durationSec: Math.round(video.duration), uri: video.uri, width: video.width, height: video.height });
     } finally {
       setPicking(false);
     }
@@ -193,7 +193,7 @@ export default function NewProject() {
           onPress={() => {
             if (!source) return;
             if (saveDefault) setDefaults(s);
-            const id = createProject({ url: picked?.uri ?? url, title: source.title, durationSec: source.durationSec }, s);
+            const id = createProject({ url: picked?.uri ?? url, title: source.title, durationSec: source.durationSec, media: picked ? { uri: picked.uri, width: picked.width, height: picked.height } : undefined }, s);
             router.dismiss();
             router.push(`/project/${id}`);
           }}

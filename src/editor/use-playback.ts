@@ -29,7 +29,7 @@ function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit,
   const seg = want.loc.segment;
   const asset = edit.assets[seg.assetId];
   slot.segId = seg.id;
-  if (!asset || asset.kind !== 'video') {
+  if (!asset || asset.kind !== 'video' || asset.placeholder) {
     if (slot.playing) player.pause();
     slot.playing = false;
     return;

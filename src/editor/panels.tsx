@@ -4,7 +4,7 @@ import { Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { ANIMATIONS, EFFECTS, IDENTITY, TRANSITIONS, type Animation, type EffectId, type Transform, type Transition } from '@/engine/animate';
 import { ADJUST_SLIDERS, FILTERS, NO_ADJUST, type Look } from '@/engine/looks';
-import { ASPECTS, BLEND_MODES, FONTS, SPEED_RAMPS, SPEEDS, type Background, type BlendMode, type CaptionStyle, type EditAspect, type Fit, type Mask, type TextStyle } from '@/engine/timeline';
+import { ASPECTS, BLEND_MODES, FONTS, SPEED_RAMPS, SPEEDS, type Caption, type Background, type BlendMode, type CaptionStyle, type EditAspect, type Fit, type Mask, type TextStyle } from '@/engine/timeline';
 import { Chip, Row, Segmented, T } from '@/ui/primitives';
 import { TEMPLATES } from '@/ui/templates';
 import { colors, fonts } from '@/ui/theme';
@@ -312,10 +312,11 @@ export function TextPanel({ text, style, onText, onStyle }: { text: string; styl
   );
 }
 
-export function CaptionStylePanel({ style, onChange }: { style: CaptionStyle; onChange: Change<CaptionStyle> }) {
+export function CaptionStylePanel({ style, onChange, onSwapScript }: { style: CaptionStyle; onChange: Change<CaptionStyle>; onSwapScript?: () => void }) {
   return (
     <View style={{ gap: 8 }}>
       <Strip>
+        {onSwapScript && <Chip label="Roman ⇄ देवनागरी" onPress={onSwapScript} />}
         {TEMPLATES.map((t) => (
           <Chip key={t.id} label={t.name} selected={style.template === t.id} onPress={() => onChange({ ...style, template: t.id }, true)} />
         ))}
@@ -399,6 +400,76 @@ export function BlendPanel({ blend, mask, onBlend, onMask }: { blend: BlendMode;
         {(['none', 'circle', 'rounded'] as const).map((m) => (
           <Chip key={m} label={m[0].toUpperCase() + m.slice(1)} selected={mask === m} onPress={() => onMask(m)} />
         ))}
+      </Strip>
+    </View>
+  );
+}
+
+/**
+ * The transcript as an editing surface: tap a word to jump to it, then cut it (which
+ * cuts the video) or mark it as a keyword. Filler words are underlined.
+ */
+export function TranscriptPanel({
+  captions,
+  time,
+  isFiller,
+  onSeek,
+  onCut,
+  onEmphasis,
+  onRemoveFillers,
+}: {
+  captions: Caption[];
+  time: number;
+  isFiller: (text: string) => boolean;
+  onSeek: (t: number) => void;
+  onCut: (captionId: string, index: number) => void;
+  onEmphasis: (captionId: string, index: number, on: boolean) => void;
+  onRemoveFillers: () => void;
+}) {
+  const [picked, setPicked] = useState<{ id: string; index: number } | null>(null);
+  const timed = captions.filter((c) => c.words?.length).sort((a, b) => a.start - b.start);
+  const fillers = timed.reduce((n, c) => n + c.words!.filter((w) => isFiller(w.text)).length, 0);
+  const pickedWord = picked ? timed.find((c) => c.id === picked.id)?.words?.[picked.index] : undefined;
+  return (
+    <View style={{ gap: 8 }}>
+      <ScrollView style={{ maxHeight: 116 }} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12 }} showsVerticalScrollIndicator={false}>
+        {timed.map((c) =>
+          c.words!.map((w, i) => {
+            const selected = picked?.id === c.id && picked.index === i;
+            const spoken = time >= c.start + w.t0 && time < c.start + w.t1;
+            return (
+              <Pressable
+                key={`${c.id}-${i}`}
+                accessibilityRole="button"
+                accessibilityLabel={w.text}
+                accessibilityState={{ selected }}
+                onPress={() => {
+                  setPicked(selected ? null : { id: c.id, index: i });
+                  onSeek(c.start + w.t0 + 0.01);
+                }}
+                style={{ paddingHorizontal: 5, height: 36, justifyContent: 'center', borderRadius: 8, backgroundColor: selected ? colors.saffronSoft : spoken ? colors.surface2 : 'transparent', borderWidth: 1, borderColor: selected ? colors.saffron : 'transparent' }}>
+                <T style={{ fontSize: 16, fontFamily: w.emphasis ? fonts.bold : fonts.medium, color: w.emphasis ? colors.highlight : colors.text, textDecorationLine: isFiller(w.text) ? 'underline' : 'none', textDecorationColor: colors.amber }}>{w.text}</T>
+              </Pressable>
+            );
+          }),
+        )}
+      </ScrollView>
+      <Strip>
+        {picked && pickedWord ? (
+          <>
+            <Chip
+              label="Cut word"
+              onPress={() => {
+                onCut(picked.id, picked.index);
+                setPicked(null);
+              }}
+            />
+            <Chip label={pickedWord.emphasis ? 'Remove highlight' : 'Highlight'} selected={!!pickedWord.emphasis} onPress={() => onEmphasis(picked.id, picked.index, !pickedWord.emphasis)} />
+          </>
+        ) : (
+          <T variant="muted">Tap a word to cut it or highlight it.</T>
+        )}
+        {fillers > 0 && <Chip label={`Remove ${fillers} filler ${fillers === 1 ? 'word' : 'words'}`} onPress={onRemoveFillers} />}
       </Strip>
     </View>
   );

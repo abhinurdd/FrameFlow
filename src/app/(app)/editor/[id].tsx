@@ -23,6 +23,7 @@ import {
   SpeedPanel,
   StickerPanel,
   TextPanel,
+  TranscriptPanel,
   TransformPanel,
   TransitionPanel,
   VolumePanel,
@@ -40,6 +41,7 @@ import {
   appendAssets,
   aspectRatio,
   captionsFromWords,
+  cutCaptionWords,
   duplicateItem,
   duplicateSegment,
   locate,
@@ -50,6 +52,7 @@ import {
   newSegment,
   newText,
   parseSrt,
+  patchCaptionWord,
   patchItem,
   patchSegment,
   rampSegment,
@@ -63,6 +66,7 @@ import {
   setTransition,
   splitAt,
   splitItem,
+  swapCaptionScript,
   totalDuration,
   trimItem,
   trimSegment,
@@ -76,7 +80,7 @@ import { uid, useEdits } from '@/state/edits';
 import { Button, Row, T } from '@/ui/primitives';
 import { colors, fonts } from '@/ui/theme';
 
-type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | 'tts' | 'voice' | 'rename' | null;
+type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | 'tts' | 'voice' | 'rename' | 'transcript' | null;
 
 const PANEL_TITLES: Record<NonNullable<PanelId>, string> = {
   filters: 'Filters',
@@ -98,9 +102,10 @@ const PANEL_TITLES: Record<NonNullable<PanelId>, string> = {
   tts: 'Text to speech',
   voice: 'Voice effect',
   rename: 'Rename project',
+  transcript: 'Transcript',
 };
 
-const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'er', 'matlab', 'basically', 'actually', 'yaar', 'like', 'मतलब', 'यार', 'अं', 'हम्म']);
+const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'er', 'matlab', 'basically', 'actually', 'yaar', 'toh', 'na', 'like', 'मतलब', 'यार', 'तो', 'ना', 'अं', 'हम्म']);
 const bare = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{M}]/gu, '');
 
 function useEditHistory(edit: Edit | undefined) {
@@ -435,11 +440,12 @@ export default function Editor() {
       Alert.alert('Silences removed', `${ranges.length} ${ranges.length === 1 ? 'pause' : 'pauses'} cut. Undo brings them back.`);
     });
 
+  const isFiller = (text: string) => FILLERS.has(bare(text));
+
   function removeFillers() {
-    const ranges = edit!.captions.flatMap((c) => (c.words ?? []).filter((w) => FILLERS.has(bare(w.text))).map((w) => ({ start: c.start + w.t0, end: c.start + w.t1 })));
-    if (!ranges.length) return Alert.alert('No filler words found', edit!.captions.some((c) => c.words) ? 'Nothing to remove.' : 'Generate auto captions first, so the words are known.');
-    const cleaned = { ...edit!, captions: edit!.captions.map((c) => (c.words ? { ...c, text: c.words.filter((w) => !FILLERS.has(bare(w.text))).map((w) => w.text).join(' ') } : c)) };
-    apply(rippleCut(cleaned, ranges, () => uid('seg')), time, false);
+    const next = cutCaptionWords(edit!, (w) => isFiller(w.text), () => uid('seg'));
+    if (next === edit) return Alert.alert('No filler words found', edit!.captions.some((c) => c.words) ? 'Nothing to remove.' : 'Generate auto captions first, so the words are known.');
+    apply(next, time, false);
   }
 
   async function importSrt() {
@@ -534,6 +540,7 @@ export default function Editor() {
       { icon: 'layers-outline', label: 'Overlay', onPress: addOverlay },
       opens('sticker', 'happy-outline', 'Stickers'),
       opens('captions', 'chatbox-ellipses-outline', 'Captions'),
+      ...(edit.captions.some((c) => c.words?.length) ? [opens('transcript', 'reader-outline', 'Transcript')] : []),
       opens('effects', 'sparkles-outline', 'Effects'),
       { ...opens('filters', 'color-filter-outline', 'Filters'), disabled: !target },
       { ...opens('adjust', 'options-outline', 'Adjust'), disabled: !target },
@@ -620,7 +627,23 @@ export default function Editor() {
         />
       </View>
     );
-  else if (panel === 'captionStyle') body = <CaptionStylePanel style={edit.captionStyle} onChange={(captionStyle, commit) => change({ ...edit, captionStyle }, commit)} />;
+  else if (panel === 'captionStyle') body = <CaptionStylePanel style={edit.captionStyle} onChange={(captionStyle, commit) => change({ ...edit, captionStyle }, commit)} onSwapScript={edit.captions.some((c) => c.words?.some((w) => w.alt)) ? () => apply(swapCaptionScript(edit)) : undefined} />;
+  else if (panel === 'transcript')
+    body = (
+      <TranscriptPanel
+        captions={edit.captions}
+        time={time}
+        isFiller={isFiller}
+        onSeek={seek}
+        onCut={(captionId, index) => {
+          const caption = edit.captions.find((c) => c.id === captionId);
+          const word = caption?.words?.[index];
+          if (caption && word) apply(cutCaptionWords(edit, (w, c, i) => c.id === captionId && i === index, () => uid('seg')), caption.start + word.t0, false);
+        }}
+        onEmphasis={(captionId, index, on) => apply(patchCaptionWord(edit, captionId, index, { emphasis: on }))}
+        onRemoveFillers={removeFillers}
+      />
+    );
   else if (panel === 'captions')
     body = (
       <ActionsPanel

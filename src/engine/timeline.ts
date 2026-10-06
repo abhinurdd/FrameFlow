@@ -31,6 +31,8 @@ export type Asset = {
   name?: string;
   /** Id of the uploaded copy on the media server, once it has been sent for export. */
   remoteId?: string;
+  /** The file is not on this phone (a linked video that has not been downloaded). Shown as a stand-in frame. */
+  placeholder?: boolean;
 };
 
 export type Fit = 'contain' | 'cover';
@@ -120,7 +122,15 @@ export type TextItem = {
   animation: Animation;
 };
 
-export type CaptionWord = { t0: number; t1: number; text: string };
+export type CaptionWord = {
+  t0: number;
+  t1: number;
+  text: string;
+  /** The same word in the other script (Roman for Devanagari and the reverse), when known. */
+  alt?: string;
+  /** A keyword the caption template should highlight. */
+  emphasis?: boolean;
+};
 export type Caption = { id: string; start: number; duration: number; text: string; words?: CaptionWord[] };
 export type CaptionStyle = { template: TemplateId; size: number; /** Vertical centre, 0 (top) to 1 (bottom). */ y: number };
 
@@ -628,6 +638,49 @@ export function captionsFromWords(words: CaptionWord[], maxWords: number, makeId
     out.push({ id: makeId(), start, duration: Math.max(end - start, MIN_SEGMENT), text: group.map((w) => w.text).join(' '), words: group.map((w) => ({ ...w, t0: w.t0 - start, t1: w.t1 - start })) });
   }
   return out;
+}
+
+const captionText = (words: CaptionWord[]) => words.map((w) => w.text).join(' ');
+
+/**
+ * Transcript editing: remove the caption words that `match`, and cut the same moments
+ * out of the video. Captions left with no words are dropped.
+ */
+export function cutCaptionWords(edit: Edit, match: (word: CaptionWord, caption: Caption, index: number) => boolean, makeId: () => string): Edit {
+  const ranges: { start: number; end: number }[] = [];
+  const captions = edit.captions.flatMap((c) => {
+    if (!c.words) return [c];
+    const kept = c.words.filter((w, i) => {
+      const cut = match(w, c, i);
+      if (cut) ranges.push({ start: c.start + w.t0, end: c.start + w.t1 });
+      return !cut;
+    });
+    return kept.length ? [{ ...c, words: kept, text: captionText(kept) }] : [];
+  });
+  return ranges.length ? rippleCut({ ...edit, captions }, ranges, makeId) : edit;
+}
+
+export function patchCaptionWord(edit: Edit, captionId: string, index: number, patch: Partial<CaptionWord>): Edit {
+  return {
+    ...edit,
+    captions: edit.captions.map((c) => {
+      if (c.id !== captionId || !c.words) return c;
+      const words = c.words.map((w, i) => (i === index ? { ...w, ...patch } : w));
+      return { ...c, words, text: captionText(words) };
+    }),
+  };
+}
+
+/** Switch every caption between its two scripts (Roman and Devanagari), where both are known. */
+export function swapCaptionScript(edit: Edit): Edit {
+  return {
+    ...edit,
+    captions: edit.captions.map((c) => {
+      if (!c.words?.some((w) => w.alt)) return c;
+      const words = c.words.map((w) => (w.alt ? { ...w, text: w.alt, alt: w.text } : w));
+      return { ...c, words, text: captionText(words) };
+    }),
+  };
 }
 
 /** Parse SubRip (.srt) text into captions. */

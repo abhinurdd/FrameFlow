@@ -73,6 +73,8 @@ export type Project = {
   id: string;
   title: string;
   sourceUrl: string;
+  /** The source file, when it came from this phone's gallery rather than a link. */
+  media?: { uri: string; width: number; height: number };
   durationSec: number;
   speakers: number;
   createdAt: number;

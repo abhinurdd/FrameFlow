@@ -24,6 +24,7 @@ type Stage = { kind: 'idle' } | { kind: 'working'; label: string; progress: numb
 export function ExportSheet({ edit, onClose, onUploaded }: { edit: Edit; onClose: () => void; onUploaded: (edit: Edit) => void }) {
   const [settings, setSettings] = useState<RenderSettings>({ height: 1080, fps: 30 });
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
+  const offline = edit.main.some((s) => edit.assets[s.assetId]?.placeholder);
   const ratio = aspectRatio(edit);
   // The short side carries the "p" number, as on every other editor.
   const short = settings.height;
@@ -66,7 +67,15 @@ export function ExportSheet({ edit, onClose, onUploaded }: { edit: Edit; onClose
           )}
         </Row>
 
-        {stage.kind === 'idle' && (
+        {offline && stage.kind === 'idle' && (
+          <View style={{ gap: 10 }}>
+            <T style={{ fontFamily: fonts.bold }}>This video isn&apos;t on your phone yet</T>
+            <T variant="muted">Clips made from a link can be edited now and exported once the source video has been fetched.</T>
+            <Button title="OK" variant="secondary" onPress={onClose} />
+          </View>
+        )}
+
+        {!offline && stage.kind === 'idle' && (
           <>
             <View style={{ gap: 8 }}>
               <T variant="label">Resolution</T>

@@ -15,7 +15,7 @@ import type { Clip, ClipSpec, ClipStatus, Project, ProjectSettings, StageKey } f
 type State = {
   projects: Project[];
   clips: Clip[];
-  createProject: (input: { url: string; title: string; durationSec: number }, settings: ProjectSettings) => string;
+  createProject: (input: { url: string; title: string; durationSec: number; media?: Project['media'] }, settings: ProjectSettings) => string;
   setClipStatus: (id: string, status: ClipStatus) => void;
   updateSpec: (id: string, fn: (spec: ClipSpec) => ClipSpec) => void;
   deleteProject: (id: string) => void;
@@ -38,6 +38,7 @@ export const useProjects = create<State>()(
           id,
           title: input.title,
           sourceUrl: input.url,
+          media: input.media,
           durationSec: input.durationSec,
           speakers: 2,
           createdAt: Date.now(),
