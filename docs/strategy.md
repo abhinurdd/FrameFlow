@@ -1,7 +1,7 @@
 # FrameFlow Strategy
 
 **Owner of tech:** Claude (end to end).
-**Last updated:** 2026-10-05.
+**Last updated:** 2026-10-06.
 **Evidence base:** [research/competitive-teardown.md](research/competitive-teardown.md).
 
 Living document. Update it when a decision is made or a phase finishes.
@@ -112,7 +112,7 @@ Features get copied in a quarter, so the edge has to come from these:
 
 | Phase | Time | Exit criteria |
 |---|---|---|
-| **0. Prove it** | ~2 weeks | Hinglish test set built. ASR bakeoff done and a provider chosen. End-to-end pipeline spike with the first clip in under 5 min on a 60-min podcast. Unit cost per clip measured and compatible with ₹2–5 pricing. Caption render parity prototype. |
+| **0. Prove it** (in progress) | ~2 weeks | Hinglish test set built. ASR bakeoff done and a provider chosen. End-to-end pipeline spike with the first clip in under 5 min on a 60-min podcast. Unit cost per clip measured and compatible with ₹2–5 pricing. Caption render parity prototype. |
 | **1. Core loop (MVP)** | ~6–8 weeks | Link/upload → clips → swipe review → light edit → export/share on Android and iOS. INR pricing with UPI. Closed beta with 30–50 clippers and podcasters. |
 | **2. Retention** | After the MVP | Reprompt/chat ("3 more about money"), Hindi filler removal, brand presets, multi-account posting and scheduling, agency mode (batch links, many brands). |
 | **3. Expand** | Later | Regional languages, an insights loop (what performed, what to clip next), a learned ranker trained on our own data. |
@@ -132,3 +132,7 @@ Features get copied in a quarter, so the edge has to come from these:
 
 - 2026-10-05: Stack is Expo SDK 57 + React Native 0.86 + TypeScript + Expo Router (repo initialized, not yet committed).
 - 2026-10-05: Strategy above adopted as the working plan.
+- 2026-10-06: Phase 0 started. The harness lives in `pipeline/` (a separate Node/TypeScript package, so Clip Spec types can later be shared with the app). It has ASR adapters for ElevenLabs Scribe, Deepgram Nova-3 and Sarvam Saaras, WER/CER scoring that normalizes Hindi and Roman text, Claude highlight selection, and a streaming spike that reports time to first clip and cost. Nothing has been run against a real provider yet: no API keys or test audio.
+- 2026-10-06: Test set shape: about 50 hours of audio, with a human-corrected gold subset of about 5 hours (both scripts) for WER/CER. The rest is for speed, cost and the end-to-end spike.
+- 2026-10-06: Sarvam's REST endpoint has no word-level timestamps or diarization and takes about 30 s of audio per call. Long-form use needs their Batch API. Word timing is required for the caption track, so Sarvam would need forced alignment on top unless the Batch API returns it.
+- 2026-10-06: Highlight selection uses `claude-opus-5-5` with structured output. Model choice gets revisited once unit cost is measured.

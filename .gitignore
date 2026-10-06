@@ -41,3 +41,7 @@ example
 # generated native folders
 /ios
 /android
+
+# pipeline working files and test-set audio
+pipeline/work/
+pipeline/testset/audio/
