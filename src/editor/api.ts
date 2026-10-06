@@ -38,7 +38,7 @@ const post = <T>(path: string, body: unknown) => call<T>(path, { method: 'POST',
 
 export async function health() {
   try {
-    return await call<{ ok: boolean; whisper: boolean; tts?: boolean }>('/health');
+    return await call<{ ok: boolean; whisper: boolean; translate?: boolean; tts?: boolean }>('/health');
   } catch {
     return null;
   }

@@ -58,14 +58,14 @@ JSON in and out, CORS open. Errors are `{ "error": "..." }` with a 4xx or 5xx st
 
 | Request | Response |
 | --- | --- |
-| `GET /health` | `{ ok: true, whisper: boolean }` |
+| `GET /health` | `{ ok: true, whisper: boolean, translate: boolean, tts: boolean }`: whether transcription, translation and text to speech are set up |
 | `POST /media` (raw file body; headers `content-type`, `x-filename`) | `{ id, kind: 'video'\|'image'\|'audio', duration, width, height }`. Width and height have rotation metadata applied. |
 | `GET /media/:id` | The file. `Range` is supported. |
 | `POST /render` `{ edit, settings: { height, fps: 24\|30\|60, bitrateMbps? } }` | `{ jobId }`. `height` is the output height in pixels; the width follows from the edit's aspect ratio. Every asset the edit uses needs a `remoteId` from `POST /media`. Without `bitrateMbps` the encoder uses CRF 20. |
 | `GET /jobs/:id` | `{ status: 'queued'\|'running'\|'done'\|'error', progress: 0..1, error?, result? }`. A render's result is `{ width, height, fps, duration, frames, bytes, renderSeconds }`. |
 | `GET /jobs/:id/file` | The job's output file: the MP4, or the media a tool made. `Range` is supported. |
 
-Tools take `{ mediaId, ... }` and return `{ jobId }`. New media is registered like an upload and returned in the job result as `{ media: { id, kind, duration, width, height } }`.
+Tools take `{ mediaId, ... }` (`tts` takes text instead) and return `{ jobId }`. New media is registered like an upload and returned in the job result as `{ media: { id, kind, duration, width, height } }`.
 
 | Tool | Result |
 | --- | --- |
@@ -73,10 +73,13 @@ Tools take `{ mediaId, ... }` and return `{ jobId }`. New media is registered li
 | `POST /tools/frame` `{ time }` | `media`: a PNG still |
 | `POST /tools/extract-audio` | `media`: an m4a |
 | `POST /tools/denoise` | `media`: a copy with the audio denoised (`afftdn`); the video stream is copied |
+| `POST /tools/stabilize` | `media`: the video steadied, same size and length, audio kept. Uses `vidstabdetect`/`vidstabtransform` when the ffmpeg build has them, else `deshake`; the result's `method` says which. |
+| `POST /tools/voice` `{ effect: 'deep'\|'chipmunk'\|'robot'\|'echo'\|'telephone' }` | `media`: same length, voice changed. A video keeps its picture (stream copied); audio comes back as m4a. Any other effect is a 400. |
+| `POST /tools/tts` `{ text, language?: 'hi'\|'en' }` | `media`: an m4a of the text spoken, plus `voice`. Text over 2,000 characters is a 400. |
 | `POST /tools/silence` `{ minSilence?: 0.4, thresholdDb?: -35 }` | `{ ranges: [{ start, end }] }` in source seconds |
 | `POST /tools/beats` | `{ beats: number[] }` in seconds |
 | `POST /tools/waveform` `{ samples?: 400 }` | `{ peaks: number[] }`, 0..1 |
-| `POST /tools/transcribe` `{ language? }` | `{ words: [{ t0, t1, text }], language }` |
+| `POST /tools/transcribe` `{ language?, translate? }` | `{ words: [{ t0, t1, text }], language }`. With `translate: true` the words are English and `language` is still the spoken one. Every word has `t1 > t0` and words are in order. |
 
 ```bash
 ID=$(curl -s -X POST -H 'x-filename: clip.mp4' -H 'content-type: video/mp4' --data-binary @clip.mp4 localhost:8787/media | jq -r .id)
@@ -95,7 +98,18 @@ curl -L -o pipeline/work/models/ggml-large-v3-turbo.bin \
   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin
 ```
 
-The whisper.cpp path has only been tested against a sample of its JSON output, not against the binary.
+Whisper sometimes gives several words in a row the same instant, or ends the last word at 30 s. The server spreads such runs evenly over the gap to the next word (at most 0.6 s a word) and keeps every word inside the audio.
+
+**Translation** (`translate: true`) needs a model that can translate. The `turbo` models cannot: with `--translate` they still write the spoken language. The server uses `$WHISPER_TRANSLATE_MODEL`, else the main model if it is not a turbo one, else the first non-turbo `.bin` in `pipeline/work/models`. With none, the job fails with "translation is not set up" and `/health` reports `translate: false`. For example:
+
+```bash
+curl -L -o pipeline/work/models/ggml-medium.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin
+```
+
+### Text to speech
+
+On macOS `/tools/tts` uses `say`: the voice Lekha for Hindi (when `language` is `hi` or the text has Devanagari), otherwise an Indian English voice (Rishi, Aman, Tara or Veena, whichever is installed), otherwise the system default. Voices are added in System Settings, Accessibility, Spoken Content. Elsewhere it uses `espeak-ng` when that is on the PATH (`apt install espeak-ng`). With neither, the job fails with "text to speech is not set up" and `/health` reports `tts: false`.
 
 ### Known gaps
 

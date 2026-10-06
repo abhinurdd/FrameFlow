@@ -59,7 +59,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Canvas ratio and background | CapCut, InShot | ✅ 8 ratios, colour background; blur background shows in export only |
 | Rotate, flip, fill / fit, zoom, opacity | all | ✅ |
 | Chroma key | CapCut, InShot, Edits | ❌ needs a shader-based preview |
-| Stabilise | CapCut, InShot | 🟡 server tool |
+| Stabilise | CapCut, InShot | 🟡 server tool, light one-pass stabilisation |
 | Background removal, object tracking | CapCut, Edits | ❌ |
 
 ### Text, stickers, captions
@@ -72,7 +72,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Stickers | CapCut, InShot libraries | ✅ 40 emoji; no sticker library |
 | Auto captions | CapCut, Captions (91 languages) | ✅ on-server whisper, Hindi verified, word timings |
 | Caption templates with word highlight | Submagic | ✅ 4 templates, karaoke highlight in preview and export |
-| Captions in English from Hindi speech | InShot, Edits | 🟡 whisper translation |
+| Captions in English from Hindi speech | InShot, Edits | ❌ wired up, but the installed speech model cannot translate; needs a second model on the server |
 | Bilingual (two lines) | InShot | ❌ |
 | Import .srt | VN | 🟡 |
 | Devanagari ↔ Roman (Hinglish) toggle | none | ❌ planned differentiator, needs the ASR bakeoff |

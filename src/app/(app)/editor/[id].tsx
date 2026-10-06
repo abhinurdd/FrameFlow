@@ -396,6 +396,7 @@ export default function Editor() {
       const status = await health();
       if (!status) throw new ServerError('The media server is not running. Start it with "npm run server" in pipeline/.');
       if (!status.whisper) throw new ServerError('Speech recognition is not set up on the media server yet. See pipeline/README.md.');
+      if (translate && !status.translate) throw new ServerError('English captions need a second speech model on the media server. See "Translation" in pipeline/README.md.');
       const words: CaptionWord[] = [];
       await acrossClips(
         async (asset) => (await tools.transcribe(asset, { translate }, p)).words,
