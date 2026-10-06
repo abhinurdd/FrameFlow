@@ -409,7 +409,16 @@ export default function Editor() {
     }
   }
 
-  const autoCaptions = (translate = false) =>
+  /** Auto captions replace what is there, so ask first when there is something to lose. */
+  const autoCaptions = (translate = false) => {
+    if (!edit!.captions.length) return generateCaptions(translate);
+    Alert.alert('Replace captions?', 'New captions will replace the ones you have now. Undo brings them back.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Replace', onPress: () => generateCaptions(translate) },
+    ]);
+  };
+
+  const generateCaptions = (translate: boolean) =>
     run(translate ? 'Translating' : 'Transcribing', async (p) => {
       const status = await health();
       if (!status) throw new ServerError('The media server is not running. Start it with "npm run server" in pipeline/.');

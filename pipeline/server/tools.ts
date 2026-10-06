@@ -381,7 +381,30 @@ export function wordsFromWhisper(json: WhisperJson) {
       words.push({ t0, t1, text });
     }
   }
-  return words;
+  return dropAnnotations(words);
+}
+
+/**
+ * Whisper describes non-speech sound as "*Piano music*", "(laughs)" or "[applause]",
+ * and invents such notes over silence or music. They are not words anyone said.
+ */
+export function dropAnnotations<T extends { text: string }>(words: T[]): T[] {
+  const out: T[] = [];
+  let inside = false;
+  for (const w of words) {
+    const opens = /^[*(\[♪]/.test(w.text);
+    const closes = /[*)\]♪][.,!?]*$/.test(w.text);
+    if (inside) {
+      if (closes) inside = false;
+      continue;
+    }
+    if (opens) {
+      inside = !(closes && w.text.length > 1);
+      continue;
+    }
+    out.push(w);
+  }
+  return out;
 }
 
 /** Longest a word may be stretched to when its timing has to be made up. */

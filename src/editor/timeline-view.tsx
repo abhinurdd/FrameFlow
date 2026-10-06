@@ -12,9 +12,9 @@ import type { Selection } from './types';
 
 const RULER_H = 22;
 const MAIN_H = 52;
-const LANE_H = 30;
+const LANE_H = 28;
 /** The timeline always takes this much room, so nothing above it moves as tracks are added. */
-export const TIMELINE_H = RULER_H + MAIN_H + 6 + LANE_H * 3.5;
+export const TIMELINE_H = RULER_H + MAIN_H + 6 + LANE_H * 4.4;
 const RULER_STEPS = [0.5, 1, 2, 5, 10, 30, 60, 300];
 const ZOOM_MIN = 4;
 const ZOOM_MAX = 600;

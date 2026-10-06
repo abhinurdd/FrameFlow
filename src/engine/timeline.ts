@@ -628,16 +628,23 @@ export function relink(before: Edit, after: Edit): Edit {
   };
 }
 
-/** Split text into caption lines of at most `maxWords` words, spread evenly across the time range. */
-export function captionsFromWords(words: CaptionWord[], maxWords: number, makeId: () => string): Caption[] {
-  const out: Caption[] = [];
-  for (let i = 0; i < words.length; i += maxWords) {
-    const group = words.slice(i, i + maxWords);
+/**
+ * Group words into caption lines of at most `maxWords`. A pause starts a new line, so a
+ * caption never hangs on screen across a silence.
+ */
+export function captionsFromWords(words: CaptionWord[], maxWords: number, makeId: () => string, maxGap = 0.7): Caption[] {
+  const groups: CaptionWord[][] = [];
+  for (const w of words) {
+    const group = groups[groups.length - 1];
+    const last = group?.[group.length - 1];
+    if (!group || group.length >= maxWords || w.t0 - last!.t1 > maxGap) groups.push([w]);
+    else group.push(w);
+  }
+  return groups.map((group) => {
     const start = group[0].t0;
     const end = group[group.length - 1].t1;
-    out.push({ id: makeId(), start, duration: Math.max(end - start, MIN_SEGMENT), text: group.map((w) => w.text).join(' '), words: group.map((w) => ({ ...w, t0: w.t0 - start, t1: w.t1 - start })) });
-  }
-  return out;
+    return { id: makeId(), start, duration: Math.max(end - start, MIN_SEGMENT), text: group.map((w) => w.text).join(' '), words: group.map((w) => ({ ...w, t0: w.t0 - start, t1: w.t1 - start })) };
+  });
 }
 
 const captionText = (words: CaptionWord[]) => words.map((w) => w.text).join(' ');

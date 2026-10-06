@@ -107,6 +107,9 @@ test('captions from words and from SRT', () => {
   const caps = captionsFromWords(words, 2, () => `c${n++}`);
   expect(caps.map((c) => [c.start, c.text])).toEqual([[0, 'w0 w1'], [2, 'w2 w3'], [4, 'w4']]);
   expect(caps[1].words![1]).toMatchObject({ t0: 1, text: 'w3' });
+  // A pause breaks the line even when it is not full.
+  const paused = captionsFromWords([{ t0: 0, t1: 0.5, text: 'a' }, { t0: 3, t1: 3.5, text: 'b' }], 4, () => 'p');
+  expect(paused.map((c) => [c.start, c.duration, c.text])).toEqual([[0, 0.5, 'a'], [3, 0.5, 'b']]);
   const srt = parseSrt('1\n00:00:01,000 --> 00:00:02,500\nनमस्ते <b>dosto</b>\n\n2\n00:01:00,000 --> 00:01:01,000\nHello\nworld\n', () => 'x');
   expect(srt.map((c) => [c.start, c.duration, c.text])).toEqual([[1, 1.5, 'नमस्ते dosto'], [60, 1, 'Hello world']]);
 });
