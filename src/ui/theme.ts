@@ -5,6 +5,7 @@ export const colors = {
   line: '#2A2A36',
   lineStrong: '#3A3A48',
   text: '#F3F3F7',
+  textSecondary: '#C9C9D6',
   textMuted: '#9A9AAB',
   textDim: '#6B6B7B',
   saffron: '#FF7A1A',
@@ -17,6 +18,18 @@ export const colors = {
   amberSoft: 'rgba(245,158,11,0.10)',
   danger: '#FF6B6B',
   highlight: '#FFD23F',
+  /** Selection outlines and handles in the editor. */
+  select: '#FFD23F',
+  ink: '#111111',
+  white: '#FFFFFF',
+  black: '#000000',
+  scrim: 'rgba(0,0,0,0.6)',
+  /** One colour per timeline track, so items read at a glance. */
+  trackOverlay: '#4C84FF',
+  trackText: '#C36BFF',
+  trackCaption: '#FF8A33',
+  trackEffect: '#FF5C98',
+  trackAudio: '#3DDC84',
   speakerA: '#2D6BFF',
   speakerB: '#B33DFF',
 } as const;
@@ -35,6 +48,9 @@ export const fonts = {
 } as const;
 
 export const radius = { sm: 8, md: 12, lg: 14, xl: 22, pill: 999 } as const;
+
+/** Smallest comfortable touch target (iOS 44pt, Android 48dp). */
+export const TAP = 48;
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 

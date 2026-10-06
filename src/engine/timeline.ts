@@ -574,6 +574,50 @@ export function rippleCut(edit: Edit, ranges: { start: number; end: number }[], 
   return { ...cut, overlays: cut.overlays.map(move), texts: cut.texts.map(move), captions: cut.captions.map(move), effects: cut.effects.map(move), audio: cut.audio.map(move), markers: cut.markers.map(shift) };
 }
 
+/**
+ * Linkage: after the main track changes shape (speed, trim, reorder, a new transition),
+ * move everything on the free tracks so it stays over the same moment of the same clip.
+ * Captions also stretch with the clip's speed. Background music stays where it is.
+ */
+export function relink(before: Edit, after: Edit): Edit {
+  if (!before.main.length || !after.main.length) return after;
+  const starts = segmentStarts(after);
+  const end = mainDuration(before);
+  const anchor = (t: number): { time: number; scale: number } | null => {
+    const loc = locate(before, t);
+    if (!loc || t >= end) return null;
+    const src = loc.sourceTime;
+    const old = loc.segment;
+    const holds = (s: Segment) => src >= s.in - 1e-6 && src <= s.out + 1e-6;
+    const same = after.main.findIndex((s) => s.id === old.id);
+    // The same clip if it still shows this moment, else another piece cut from the same source.
+    const i = same >= 0 && holds(after.main[same]) ? same : after.main.findIndex((s) => s.assetId === old.assetId && holds(s));
+    if (i >= 0) return { time: starts[i] + (src - after.main[i].in) / after.main[i].speed, scale: old.speed / after.main[i].speed };
+    if (same < 0) return null;
+    // The moment was trimmed away: pin to the nearer edge of the clip.
+    const s = after.main[same];
+    return { time: src < s.in ? starts[same] : starts[same] + segmentDuration(s), scale: old.speed / s.speed };
+  };
+  const move = <T extends { start: number }>(item: T): T => {
+    const a = anchor(item.start);
+    return a ? { ...item, start: a.time } : item;
+  };
+  const caption = (c: Caption): Caption => {
+    const a = anchor(c.start);
+    if (!a) return c;
+    return { ...c, start: a.time, duration: c.duration * a.scale, words: c.words?.map((w) => ({ ...w, t0: w.t0 * a.scale, t1: w.t1 * a.scale })) };
+  };
+  return {
+    ...after,
+    overlays: after.overlays.map(move),
+    texts: after.texts.map(move),
+    captions: after.captions.map(caption),
+    effects: after.effects.map(move),
+    audio: after.audio.map((a) => (a.kind === 'music' ? a : move(a))),
+    markers: after.markers.map((m) => anchor(m)?.time ?? m),
+  };
+}
+
 /** Split text into caption lines of at most `maxWords` words, spread evenly across the time range. */
 export function captionsFromWords(words: CaptionWord[], maxWords: number, makeId: () => string): Caption[] {
   const out: Caption[] = [];

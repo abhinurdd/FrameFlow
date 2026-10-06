@@ -45,13 +45,13 @@ export function Slider({
   const pct = ((shown - min) / (max - min)) * 100;
   const zero = min < 0 ? (-min / (max - min)) * 100 : 0;
   return (
-    <Row style={{ height: 34 }} gap={10}>
-      <T style={{ width: 86, fontSize: 12, fontFamily: fonts.semibold, color: '#C9C9D6' }}>{label}</T>
+    <Row style={{ height: 40 }} gap={10}>
+      <T style={{ width: 86, fontSize: 12, fontFamily: fonts.semibold, color: colors.textSecondary }}>{label}</T>
       <GestureDetector gesture={drag}>
-        <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ flex: 1, height: 34, justifyContent: 'center' }}>
-          <View style={{ height: 3, borderRadius: 2, backgroundColor: colors.lineStrong }} />
-          <View style={{ position: 'absolute', height: 3, borderRadius: 2, backgroundColor: colors.saffron, left: `${Math.min(zero, pct)}%`, width: `${Math.abs(pct - zero)}%` }} />
-          <View style={{ position: 'absolute', left: `${pct}%`, marginLeft: -9, width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' }} />
+        <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} accessibilityRole="adjustable" accessibilityLabel={label} accessibilityValue={{ text: format(shown) }} style={{ flex: 1, height: 40, justifyContent: 'center' }}>
+          <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.lineStrong }} />
+          <View style={{ position: 'absolute', height: 4, borderRadius: 2, backgroundColor: colors.saffron, left: `${Math.min(zero, pct)}%`, width: `${Math.abs(pct - zero)}%` }} />
+          <View style={{ position: 'absolute', left: `${pct}%`, marginLeft: -11, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white }} />
         </View>
       </GestureDetector>
       <T style={{ width: 36, textAlign: 'right', fontSize: 12, fontFamily: fonts.semibold, color: colors.textMuted }}>{format(shown)}</T>

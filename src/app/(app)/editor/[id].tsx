@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
-import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
@@ -30,6 +29,7 @@ import {
 } from '@/editor/panels';
 import { localAsset, pickAudio, pickMedia, pickText, probeDuration } from '@/editor/pick';
 import { clock, TimelineView } from '@/editor/timeline-view';
+import { BusyPill, IconButton, Tool, ToolSheet, type ToolDef } from '@/editor/ui';
 import type { CanvasSize, Selection } from '@/editor/types';
 import { usePlayback } from '@/editor/use-playback';
 import { keyframeNear, setKeyframe, transformAt, type Keyframe, type Transform } from '@/engine/animate';
@@ -39,7 +39,6 @@ import {
   addItem,
   appendAssets,
   aspectRatio,
-  audioDuration,
   captionsFromWords,
   duplicateItem,
   duplicateSegment,
@@ -54,6 +53,7 @@ import {
   patchItem,
   patchSegment,
   rampSegment,
+  relink,
   removeItem,
   removeSegment,
   replaceSegmentAsset,
@@ -76,8 +76,29 @@ import { uid, useEdits } from '@/state/edits';
 import { Button, Row, T } from '@/ui/primitives';
 import { colors, fonts } from '@/ui/theme';
 
-type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | 'tts' | 'voice' | null;
-type ToolDef = { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; disabled?: boolean; on?: boolean };
+type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | 'tts' | 'voice' | 'rename' | null;
+
+const PANEL_TITLES: Record<NonNullable<PanelId>, string> = {
+  filters: 'Filters',
+  adjust: 'Adjust',
+  speed: 'Speed',
+  volume: 'Volume',
+  animation: 'Animation',
+  transition: 'Transition',
+  transform: 'Transform',
+  text: 'Text',
+  captions: 'Captions',
+  captionStyle: 'Caption style',
+  canvas: 'Canvas',
+  sticker: 'Stickers',
+  effects: 'Effects',
+  blend: 'Blend and mask',
+  audio: 'Audio',
+  ai: 'AI tools',
+  tts: 'Text to speech',
+  voice: 'Voice effect',
+  rename: 'Rename project',
+};
 
 const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'er', 'matlab', 'basically', 'actually', 'yaar', 'like', 'मतलब', 'यार', 'अं', 'हम्म']);
 const bare = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{M}]/gu, '');
@@ -120,29 +141,6 @@ function useEditHistory(edit: Edit | undefined) {
   };
 }
 
-function IconButton({ icon, onPress, disabled, size = 20 }: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void; disabled?: boolean; size?: number }) {
-  return (
-    <Pressable onPress={onPress} disabled={disabled} hitSlop={8} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.3 : 1 }}>
-      <Ionicons name={icon} size={size} color={colors.text} />
-    </Pressable>
-  );
-}
-
-function Tool({ icon, label, onPress, disabled, on }: ToolDef) {
-  return (
-    <Pressable
-      disabled={disabled}
-      onPress={() => {
-        Haptics.selectionAsync();
-        onPress();
-      }}
-      style={{ width: 64, alignItems: 'center', gap: 4, opacity: disabled ? 0.3 : 1 }}>
-      <Ionicons name={icon} size={20} color={on ? colors.saffronText : colors.text} />
-      <T numberOfLines={1} style={{ fontSize: 10.5, fontFamily: fonts.semibold, color: on ? colors.saffronText : '#C9C9D6' }}>{label}</T>
-    </Pressable>
-  );
-}
-
 export default function Editor() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const edit = useEdits((s) => s.edits.find((e) => e.id === id));
@@ -155,6 +153,11 @@ export default function Editor() {
   const [busy, setBusy] = useState<string | null>(null);
   const [recordingFrom, setRecordingFrom] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Which server-side tools are available, so the editor only offers what will work.
+  const [server, setServer] = useState<Awaited<ReturnType<typeof health>>>(null);
+  useEffect(() => {
+    health().then(setServer);
+  }, []);
   const { time, playing, seek } = playback;
 
   // Load the first frame once the draft is available.
@@ -196,9 +199,14 @@ export default function Editor() {
   const canvasH = Math.max(0, Math.min(area.h - 8, (area.w - 24) / ratio));
   const canvas: CanvasSize = { w: canvasH * ratio, h: canvasH };
 
-  /** Apply an edit, record it for undo and re-sync the players. */
-  function apply(next: Edit, at = time) {
-    if (next === edit) return;
+  /**
+   * Apply an edit, record it for undo and re-sync the players. When the main track
+   * changes shape, text, captions and overlays stay attached to their clip unless
+   * the caller has already moved them (`link` false).
+   */
+  function apply(change: Edit, at = time, link = true) {
+    if (change === edit || !edit) return;
+    const next = link && change.main !== edit.main ? relink(edit, change) : change;
     history.commit(next);
     seek(Math.min(at, totalDuration(next)), next);
   }
@@ -243,8 +251,13 @@ export default function Editor() {
   }
 
   async function addClips() {
-    const assets = await pickMedia();
-    if (assets.length) apply(appendAssets(current(), assets, assets.map(() => uid('seg'))));
+    setBusy('Importing');
+    try {
+      const assets = await pickMedia();
+      if (assets.length) apply(appendAssets(current(), assets, assets.map(() => uid('seg'))), totalDuration(current()));
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function addOverlay() {
@@ -313,7 +326,7 @@ export default function Editor() {
       const from = starts[edit!.main.indexOf(target)];
       const removed = removeSegment(edit!, target.id);
       const shifted = rippleCut({ ...edit!, main: [] }, [{ start: from, end: from + segmentDuration(target) }], () => uid('seg'));
-      apply({ ...shifted, main: removed.main });
+      apply({ ...shifted, main: removed.main }, time, false);
     }
     setSelection(null);
     setPanel(null);
@@ -329,7 +342,7 @@ export default function Editor() {
   const reverseClip = (seg: Segment, asset: Asset) =>
     run('Reversing', async (p) => {
       const reversed = await tools.reverse(asset, p);
-      apply(replaceSegmentAsset(current(), seg.id, reversed, { in: asset.duration - seg.out, out: asset.duration - seg.in }));
+      apply(replaceSegmentAsset(current(), seg.id, reversed, { in: asset.duration - seg.out, out: asset.duration - seg.in }), time, false);
     });
 
   const freezeFrame = (asset: Asset, sourceTime: number) =>
@@ -418,7 +431,7 @@ export default function Editor() {
         if (to - from > 0.2) ranges.push({ start: at(from), end: at(to) });
       });
       if (!ranges.length) return Alert.alert('No silences found', 'There are no pauses longer than about half a second.');
-      apply(rippleCut(current(), ranges, () => uid('seg')));
+      apply(rippleCut(current(), ranges, () => uid('seg')), time, false);
       Alert.alert('Silences removed', `${ranges.length} ${ranges.length === 1 ? 'pause' : 'pauses'} cut. Undo brings them back.`);
     });
 
@@ -426,7 +439,7 @@ export default function Editor() {
     const ranges = edit!.captions.flatMap((c) => (c.words ?? []).filter((w) => FILLERS.has(bare(w.text))).map((w) => ({ start: c.start + w.t0, end: c.start + w.t1 })));
     if (!ranges.length) return Alert.alert('No filler words found', edit!.captions.some((c) => c.words) ? 'Nothing to remove.' : 'Generate auto captions first, so the words are known.');
     const cleaned = { ...edit!, captions: edit!.captions.map((c) => (c.words ? { ...c, text: c.words.filter((w) => !FILLERS.has(bare(w.text))).map((w) => w.text).join(' ') } : c)) };
-    apply(rippleCut(cleaned, ranges, () => uid('seg')));
+    apply(rippleCut(cleaned, ranges, () => uid('seg')), time, false);
   }
 
   async function importSrt() {
@@ -452,7 +465,7 @@ export default function Editor() {
   const keyframeTool: ToolDef = { icon: keyframed ? 'diamond' : 'diamond-outline', label: 'Keyframe', onPress: toggleKeyframe, on: keyframed };
   const common: ToolDef[] = [
     { icon: 'copy-outline', label: 'Duplicate', onPress: duplicateSelected },
-    { icon: 'trash-outline', label: 'Delete', onPress: deleteSelected },
+    { icon: 'trash-outline', label: 'Delete', onPress: deleteSelected, danger: true },
   ];
 
   let toolbar: ToolDef[];
@@ -494,7 +507,7 @@ export default function Editor() {
         ? ([
             { icon: 'play-back-outline', label: 'Reverse', onPress: () => reverseClip(selSegment, asset) },
             { icon: 'snow-outline', label: 'Freeze', onPress: () => here && freezeFrame(asset, here.sourceTime) },
-            { icon: 'musical-note-outline', label: 'Extract audio', onPress: () => extractAudio(selSegment, asset, starts[index]) },
+            { icon: 'musical-note-outline', label: 'Extract', onPress: () => extractAudio(selSegment, asset, starts[index]) },
             { icon: 'mic-off-outline', label: 'Denoise', onPress: () => cleanAudio(selSegment, asset) },
             opens('voice', 'person-outline', 'Voice'),
             { icon: 'videocam-outline', label: 'Stabilize', onPress: () => stabilizeClip(selSegment, asset) },
@@ -505,7 +518,7 @@ export default function Editor() {
         label: 'Replace',
         onPress: async () => {
           const [next] = await pickMedia(['videos', 'images'], false);
-          if (next) apply(replaceSegmentAsset(current(), selSegment.id, next));
+          if (next) apply(replaceSegmentAsset(current(), selSegment.id, next), time, false);
         },
       },
       { icon: 'arrow-back-outline', label: 'Move left', disabled: index === 0, onPress: () => apply(moveSegment(edit, selSegment.id, -1), starts[Math.max(0, index - 1)]) },
@@ -515,7 +528,6 @@ export default function Editor() {
   } else {
     const marked = edit.markers.some((m) => Math.abs(m - time) < 0.05);
     toolbar = [
-      { icon: 'add-circle-outline', label: 'Add clip', onPress: addClips },
       { ...split, disabled: !here },
       opens('audio', 'musical-notes-outline', 'Audio'),
       { icon: 'text-outline', label: 'Text', onPress: addText },
@@ -614,7 +626,7 @@ export default function Editor() {
       <ActionsPanel
         actions={[
           { label: 'Auto captions', icon: 'flash-outline', onPress: () => autoCaptions(), busy: !!busy },
-          { label: 'Captions in English', icon: 'language-outline', onPress: () => autoCaptions(true), busy: !!busy },
+          ...(server?.translate ? [{ label: 'Captions in English', icon: 'language-outline' as const, onPress: () => autoCaptions(true), busy: !!busy }] : []),
           {
             label: 'Add a line',
             icon: 'add-outline',
@@ -636,7 +648,7 @@ export default function Editor() {
       <ActionsPanel
         actions={[
           { label: 'Auto captions', icon: 'chatbox-ellipses-outline', onPress: () => autoCaptions(), busy: !!busy },
-          { label: 'Text to speech', icon: 'megaphone-outline', onPress: () => setPanel('tts') },
+          ...(server?.tts ? [{ label: 'Text to speech', icon: 'megaphone-outline' as const, onPress: () => setPanel('tts') }] : []),
           { label: 'Remove silences', icon: 'remove-circle-outline', onPress: removeSilences, busy: !!busy },
           { label: 'Remove filler words', icon: 'close-circle-outline', onPress: removeFillers },
           // Markers come from "Beats" on a music clip, or from the Marker tool.
@@ -678,104 +690,132 @@ export default function Editor() {
       />
     );
   else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={selOverlay.blend} mask={selOverlay.mask} onBlend={(blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend }))} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
+  else if (panel === 'rename') body = <PromptPanel key={edit.id} initial={edit.name} placeholder="Project name" action="Save" onSubmit={(name) => { useEdits.getState().setEdit({ ...edit, name }); setPanel(null); }} />;
   else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {/* Top bar */}
-        <Row style={{ paddingHorizontal: 8, height: 46, justifyContent: 'space-between' }}>
-          <Row gap={0}>
-            <IconButton icon="chevron-back" onPress={() => router.back()} />
-            <Pressable onPress={() => togglePanel('canvas')} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 30, borderRadius: 99, backgroundColor: colors.surface2 }}>
-              <T style={{ fontFamily: fonts.bold, fontSize: 12.5 }}>{edit.aspect === 'original' ? 'Original' : edit.aspect}</T>
-              <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+        <Row style={{ paddingLeft: 4, paddingRight: 12, height: 52, justifyContent: 'space-between' }}>
+          <Row gap={2} style={{ flex: 1 }}>
+            <IconButton icon="chevron-back" label="Back to projects" onPress={() => router.back()} />
+            <Pressable accessibilityRole="button" accessibilityLabel={`Rename ${edit.name}`} onPress={() => togglePanel('rename')} hitSlop={8} style={({ pressed }) => ({ flexShrink: 1, opacity: pressed ? 0.6 : 1 })}>
+              <T numberOfLines={1} style={{ fontFamily: fonts.bold, fontSize: 15 }}>{edit.name}</T>
             </Pressable>
           </Row>
-          <Row gap={0}>
-            <IconButton
-              icon="arrow-undo"
-              disabled={!history.canUndo}
-              onPress={() => {
-                const e = history.undo();
-                if (e) seek(Math.min(time, totalDuration(e)), e);
-              }}
-            />
-            <IconButton
-              icon="arrow-redo"
-              disabled={!history.canRedo}
-              onPress={() => {
-                const e = history.redo();
-                if (e) seek(Math.min(time, totalDuration(e)), e);
-              }}
-            />
+          <Row gap={10}>
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Aspect ratio ${edit.aspect}`}
+              onPress={() => togglePanel('canvas')}
+              hitSlop={{ top: 8, bottom: 8 }}
+              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, height: 36, borderRadius: 18, backgroundColor: colors.surface2, opacity: pressed ? 0.7 : 1 })}>
+              <T style={{ fontFamily: fonts.bold, fontSize: 13 }}>{edit.aspect === 'original' ? 'Original' : edit.aspect}</T>
+              <Ionicons name="chevron-down" size={13} color={colors.textMuted} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Export video"
+              accessibilityState={{ disabled: !total }}
               disabled={!total}
+              hitSlop={{ top: 6, bottom: 6 }}
               onPress={() => {
                 playback.pause();
+                setPanel(null);
                 setExporting(true);
               }}
-              style={{ marginLeft: 6, paddingHorizontal: 14, height: 32, borderRadius: 99, justifyContent: 'center', backgroundColor: colors.saffron, opacity: total ? 1 : 0.4 }}>
-              <T style={{ fontFamily: fonts.heavy, fontSize: 13 }}>Export</T>
+              style={({ pressed }) => ({ paddingHorizontal: 18, height: 36, borderRadius: 18, justifyContent: 'center', backgroundColor: colors.saffron, opacity: !total ? 0.4 : pressed ? 0.8 : 1 })}>
+              <T style={{ fontFamily: fonts.heavy, fontSize: 14 }}>Export</T>
             </Pressable>
           </Row>
         </Row>
 
         {/* Canvas */}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }} onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-          {canvas.h > 0 && <EditCanvas edit={edit} time={time} playing={playing} players={playback.players} slotSegs={playback.slotSegs} canvas={canvas} selection={selection} onSelect={select} onTransform={(fn) => changeTransform(fn)} />}
+          {!total ? (
+            <View style={{ alignItems: 'center', gap: 12, paddingHorizontal: 32 }}>
+              <Ionicons name="film-outline" size={40} color={colors.textMuted} />
+              <T variant="h1" style={{ textAlign: 'center' }}>Start with a clip</T>
+              <T variant="muted" style={{ textAlign: 'center' }}>Add videos or photos from your gallery. You can add more at any time.</T>
+              <Button title="Add clips" style={{ alignSelf: 'stretch', marginTop: 4 }} loading={busy === 'Importing'} onPress={addClips} />
+            </View>
+          ) : (
+            canvas.h > 0 && <EditCanvas edit={edit} time={time} playing={playing} players={playback.players} slotSegs={playback.slotSegs} canvas={canvas} selection={selection} onSelect={select} onTransform={(fn) => changeTransform(fn)} />
+          )}
+          {busy && total > 0 && <BusyPill label={busy} />}
+          {recordingFrom !== null && (
+            <Pressable accessibilityRole="button" accessibilityLabel="Stop recording" onPress={toggleRecording} style={{ position: 'absolute', top: 10, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, height: 40, borderRadius: 20, backgroundColor: colors.danger }}>
+              <Ionicons name="stop-circle" size={18} color={colors.white} />
+              <T style={{ fontFamily: fonts.bold, fontSize: 13 }}>Recording · tap to stop</T>
+            </Pressable>
+          )}
         </View>
         <AudioTracks edit={edit} time={time} playing={playing} />
 
-        {/* Transport */}
-        <Row style={{ justifyContent: 'center', height: 38 }} gap={14}>
-          <T style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.textMuted, width: 70, textAlign: 'right' }}>{clock(time)}</T>
-          <IconButton icon={playing ? 'pause' : 'play'} size={24} disabled={!total} onPress={playback.toggle} />
-          <T style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.textDim, width: 70 }}>{clock(total)}</T>
-        </Row>
-
-        <TimelineView
-          edit={edit}
-          time={time}
-          selection={selection}
-          onSelect={select}
-          onScrub={seek}
-          onScrubStart={playback.pause}
-          onTrimSegment={trimSeg}
-          onMoveItem={(track, itemId, s) => {
-            const item = edit[track].find((i) => i.id === itemId);
-            if (item) apply(moveItem(edit, track, itemId, item.start + s));
-          }}
-          onTrimItem={(track, itemId, side, s) => apply(trimItem(edit, track, itemId, side, s))}
-          onTransition={(segmentId) => {
-            setSelection({ track: 'main', id: segmentId });
-            setPanel('transition');
-          }}
-        />
-
-        {/* Status, or the open tool's options */}
-        <View style={{ minHeight: 46, justifyContent: 'center', paddingVertical: 6 }}>
-          {busy ? (
-            <T variant="muted" style={{ textAlign: 'center' }}>{busy}…</T>
-          ) : recordingFrom !== null && panel !== 'audio' ? (
-            <Pressable onPress={toggleRecording}>
-              <T style={{ textAlign: 'center', color: colors.danger, fontFamily: fonts.bold }}>● Recording — tap to stop</T>
-            </Pressable>
-          ) : body ? (
-            body
-          ) : !total ? (
-            <T variant="muted" style={{ textAlign: 'center' }}>Add a clip to start editing.</T>
-          ) : selAudio ? (
-            <T variant="tiny" style={{ textAlign: 'center' }}>
-              {edit.assets[selAudio.assetId]?.name ?? 'Audio'} · {clock(audioDuration(selAudio))} · hold and drag to move
+        <View>
+          {/* Transport */}
+          <Row style={{ height: 48, paddingHorizontal: 8, justifyContent: 'space-between' }}>
+            <T style={{ width: 104, paddingLeft: 8, fontFamily: fonts.semibold, fontSize: 12.5, color: colors.text, fontVariant: ['tabular-nums'] }}>
+              {clock(time)} <T style={{ fontFamily: fonts.medium, fontSize: 12.5, color: colors.textMuted, fontVariant: ['tabular-nums'] }}>/ {clock(total)}</T>
             </T>
-          ) : null}
+            <IconButton icon={playing ? 'pause' : 'play'} label={playing ? 'Pause' : 'Play'} size={26} disabled={!total} onPress={playback.toggle} />
+            <Row gap={0} style={{ width: 104, justifyContent: 'flex-end' }}>
+              <IconButton
+                icon="arrow-undo"
+                label="Undo"
+                size={20}
+                disabled={!history.canUndo}
+                onPress={() => {
+                  const e = history.undo();
+                  if (e) seek(Math.min(time, totalDuration(e)), e);
+                }}
+              />
+              <IconButton
+                icon="arrow-redo"
+                label="Redo"
+                size={20}
+                disabled={!history.canRedo}
+                onPress={() => {
+                  const e = history.redo();
+                  if (e) seek(Math.min(time, totalDuration(e)), e);
+                }}
+              />
+            </Row>
+          </Row>
+
+          <TimelineView
+            edit={edit}
+            time={time}
+            selection={selection}
+            onSelect={select}
+            onScrub={seek}
+            onScrubStart={playback.pause}
+            onTrimSegment={trimSeg}
+            onMoveItem={(track, itemId, s) => {
+              const item = edit[track].find((i) => i.id === itemId);
+              if (item) apply(moveItem(edit, track, itemId, item.start + s));
+            }}
+            onTrimItem={(track, itemId, side, s) => apply(trimItem(edit, track, itemId, side, s))}
+            onTransition={(segmentId) => {
+              setSelection({ track: 'main', id: segmentId });
+              setPanel('transition');
+            }}
+            onAddClip={addClips}
+          />
+
+          {/* The open tool's options cover the timeline; the canvas above stays put. */}
+          {body && panel && (
+            <ToolSheet title={PANEL_TITLES[panel]} onClose={() => setPanel(null)}>
+              {body}
+            </ToolSheet>
+          )}
         </View>
 
         {/* Tools */}
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: 10 }}>
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 6, paddingBottom: 2 }}>
           {/* Keyed by context so each toolbar starts scrolled to its first tool. */}
-          <ScrollView key={selection?.track ?? 'root'} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 6 }}>
+          <ScrollView key={selection?.track ?? 'root'} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 4 }}>
             {toolbar.map((t) => (
               <Tool key={t.label} {...t} />
             ))}

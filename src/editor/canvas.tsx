@@ -11,12 +11,12 @@ import { compileLook, saturationLayer, type BlendLayer, type Look } from '@/engi
 import { activeAt, mainFrameAt, segmentDuration, segmentStarts, type Asset, type Caption, type CaptionStyle, type Edit, type Overlay, type Segment, type TextItem } from '@/engine/timeline';
 import type { Word } from '@/engine/types';
 import { CaptionLine } from '@/ui/clip-visual';
-import { hasDevanagari } from '@/ui/theme';
+import { colors, hasDevanagari } from '@/ui/theme';
 
 import { fontFamily } from './fonts';
 import type { CanvasSize, Selection } from './types';
 
-const SELECT = '#FFD23F';
+const SELECT = colors.select;
 const SHOWN: Layer = { opacity: 1, x: 0, y: 0, scale: 1, clipLeft: 0, clipRight: 0 };
 
 /** A drag, pinch or twist in progress on the selected item, not yet committed to the edit. */
@@ -316,8 +316,8 @@ export function EditCanvas({
           </View>
         </View>
         {fx.blur > 0 && <BlurView pointerEvents="none" intensity={fx.blur * 45} style={fill} />}
-        {fx.flash > 0 && <View pointerEvents="none" style={[fill, { backgroundColor: '#fff', opacity: fx.flash }]} />}
-        {fx.dim > 0 && <View pointerEvents="none" style={[fill, { backgroundColor: '#000', opacity: fx.dim }]} />}
+        {fx.flash > 0 && <View pointerEvents="none" style={[fill, { backgroundColor: colors.white, opacity: fx.flash }]} />}
+        {fx.dim > 0 && <View pointerEvents="none" style={[fill, { backgroundColor: colors.black, opacity: fx.dim }]} />}
         {fx.bars > 0 && (
           <>
             <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: fx.bars * canvas.h, backgroundColor: '#000' }} />

@@ -114,32 +114,39 @@ export function Chip({
   label,
   selected,
   onPress,
+  disabled,
   style,
 }: {
   label: string;
   selected?: boolean;
   onPress?: () => void;
+  disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!selected, disabled: !!disabled }}
+      disabled={disabled}
+      hitSlop={{ top: 6, bottom: 6 }}
       onPress={() => {
         Haptics.selectionAsync();
         onPress?.();
       }}
-      style={[
+      style={({ pressed }) => [
         {
-          paddingHorizontal: 12,
-          height: 34,
+          paddingHorizontal: 14,
+          height: 36,
           borderRadius: radius.pill,
           justifyContent: 'center',
           backgroundColor: selected ? colors.saffronSoft : colors.surface2,
           borderWidth: 1,
           borderColor: selected ? colors.saffron : colors.line,
+          opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
         },
         style,
       ]}>
-      <T style={{ fontFamily: hasDevanagari(label) ? fonts.deva : fonts.semibold, fontSize: 12.5, color: selected ? colors.saffronText : '#DADAE4' }}>
+      <T style={{ fontFamily: hasDevanagari(label) ? fonts.deva : fonts.semibold, fontSize: 13, color: selected ? colors.saffronText : colors.textSecondary }}>
         {label}
       </T>
     </Pressable>
@@ -166,7 +173,9 @@ export function Segmented<V extends string>({
               Haptics.selectionAsync();
               onChange(o.value);
             }}
-            style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: on ? colors.text : 'transparent' }}>
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            style={({ pressed }) => ({ flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center', backgroundColor: on ? colors.text : 'transparent', opacity: pressed ? 0.7 : 1 })}>
             <T style={{ fontFamily: hasDevanagari(o.label) ? fonts.deva : fonts.bold, fontSize: 12.5, color: on ? '#111' : colors.textMuted }}>
               {o.label}
             </T>

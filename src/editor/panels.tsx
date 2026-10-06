@@ -29,12 +29,12 @@ function Swatches({ value, onPick, allowNone }: { value: string | null; onPick: 
   return (
     <Strip>
       {allowNone && (
-        <Pressable onPress={() => onPick(null)} style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: value === null ? colors.highlight : colors.lineStrong, alignItems: 'center', justifyContent: 'center' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="No colour" hitSlop={6} onPress={() => onPick(null)} style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: value === null ? colors.highlight : colors.lineStrong, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="ban-outline" size={14} color={colors.textMuted} />
         </Pressable>
       )}
       {SWATCHES.map((c) => (
-        <Pressable key={c} onPress={() => onPick(c)} style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: c, borderWidth: 2, borderColor: value === c ? colors.highlight : colors.lineStrong }} />
+        <Pressable key={c} accessibilityRole="button" accessibilityLabel={`Colour ${c}`} hitSlop={6} onPress={() => onPick(c)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c, borderWidth: 2, borderColor: value === c ? colors.highlight : colors.lineStrong }} />
       ))}
     </Strip>
   );
@@ -66,7 +66,7 @@ export function FiltersPanel({ look, onChange, onApplyAll }: { look: Look; onCha
 
 export function AdjustPanel({ look, onChange }: { look: Look; onChange: Change<Look> }) {
   return (
-    <ScrollView style={{ maxHeight: 150 }} showsVerticalScrollIndicator={false}>
+    <ScrollView style={{ maxHeight: 190 }} showsVerticalScrollIndicator={false}>
       <Stack>
         {ADJUST_SLIDERS.map((s) => (
           <Slider
@@ -106,8 +106,8 @@ export function SpeedPanel({ speed, onChange, onRamp }: { speed: number; onChang
 }
 
 /** A text box with one action button: used for text to speech. */
-export function PromptPanel({ placeholder, action, busy, onSubmit }: { placeholder: string; action: string; busy?: boolean; onSubmit: (text: string) => void }) {
-  const [text, setText] = useState('');
+export function PromptPanel({ placeholder, action, busy, initial = '', onSubmit }: { placeholder: string; action: string; busy?: boolean; initial?: string; onSubmit: (text: string) => void }) {
+  const [text, setText] = useState(initial);
   return (
     <Row style={{ paddingHorizontal: 14 }} gap={8}>
       <TextInput
@@ -332,9 +332,9 @@ export function ActionsPanel({ actions }: { actions: { label: string; icon: keyo
   return (
     <Strip>
       {actions.map((a) => (
-        <Pressable key={a.label} onPress={a.onPress} disabled={a.busy} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 36, borderRadius: 99, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.line, opacity: a.busy ? 0.5 : 1 }}>
+        <Pressable key={a.label} accessibilityRole="button" accessibilityState={{ disabled: !!a.busy }} hitSlop={{ top: 4, bottom: 4 }} onPress={a.onPress} disabled={a.busy} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, height: 40, borderRadius: 99, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.line, opacity: a.busy ? 0.4 : pressed ? 0.7 : 1 })}>
           <Ionicons name={a.icon} size={15} color={colors.saffronText} />
-          <T style={{ fontFamily: fonts.semibold, fontSize: 12.5 }}>{a.label}</T>
+          <T style={{ fontFamily: fonts.semibold, fontSize: 13 }}>{a.label}</T>
         </Pressable>
       ))}
     </Strip>
@@ -353,9 +353,8 @@ export function CanvasPanel({ aspect, background, onAspect, onBackground }: { as
       </Strip>
       <Strip>
         <T variant="muted">Background</T>
-        <Chip label="Blur" selected={background.type === 'blur'} onPress={() => onBackground({ type: 'blur' })} />
         {BACKGROUNDS.map((c) => (
-          <Pressable key={c} onPress={() => onBackground({ type: 'color', color: c })} style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: c, borderWidth: 2, borderColor: background.type === 'color' && background.color === c ? colors.highlight : colors.lineStrong }} />
+          <Pressable key={c} accessibilityRole="button" accessibilityLabel={`Background ${c}`} hitSlop={6} onPress={() => onBackground({ type: 'color', color: c })} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c, borderWidth: 2, borderColor: background.type === 'color' && background.color === c ? colors.highlight : colors.lineStrong }} />
         ))}
       </Strip>
     </View>
@@ -368,8 +367,8 @@ export function StickerPanel({ onPick }: { onPick: (emoji: string) => void }) {
   return (
     <Strip>
       {EMOJI.map((e) => (
-        <Pressable key={e} onPress={() => onPick(e)} style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
-          <T style={{ fontSize: 22 }}>{e}</T>
+        <Pressable key={e} accessibilityRole="button" accessibilityLabel={`Sticker ${e}`} onPress={() => onPick(e)} style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
+          <T style={{ fontSize: 26 }}>{e}</T>
         </Pressable>
       ))}
     </Strip>

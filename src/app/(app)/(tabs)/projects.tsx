@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { FlatList, Pressable, View } from 'react-native';
+import { Alert, FlatList, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { totalDuration } from '@/engine/timeline';
@@ -35,7 +35,11 @@ export default function Projects() {
                       {e.main.length} {e.main.length === 1 ? 'clip' : 'clips'} · {duration(totalDuration(e))}
                     </T>
                   </View>
-                  <Pressable hitSlop={10} onPress={() => deleteEdit(e.id)}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${e.name}`}
+                    hitSlop={14}
+                    onPress={() => Alert.alert(`Delete "${e.name}"?`, 'This draft will be removed from this phone. It cannot be undone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => deleteEdit(e.id) }])}>
                     <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
                   </Pressable>
                 </Panel>

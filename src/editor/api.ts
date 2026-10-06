@@ -28,9 +28,9 @@ async function call<T>(path: string, init?: Parameters<typeof fetch>[1]): Promis
   try {
     res = await fetch(`${BASE}${path}`, init);
   } catch {
-    throw new ServerError(`Can't reach the media server at ${BASE}. Start it with "npm run server" in pipeline/.`);
+    throw new ServerError(__DEV__ ? `Can't reach the media server at ${BASE}. Start it with "npm run server" in pipeline/.` : "Can't reach FrameFlow right now. Check your connection and try again.");
   }
-  if (!res.ok) throw new ServerError(`Media server error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new ServerError(__DEV__ ? `Media server error ${res.status}: ${(await res.text()).slice(0, 200)}` : 'Something went wrong on our side. Please try again.');
   return (await res.json()) as T;
 }
 

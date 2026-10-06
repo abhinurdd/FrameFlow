@@ -14,6 +14,7 @@ import {
   addItem,
   parseSrt,
   rampSegment,
+  relink,
   patchSegment,
   removeSegment,
   segmentStarts,
@@ -137,4 +138,21 @@ test('speed ramp splits the source evenly', () => {
   const ramped = rampSegment(edit, 's1', [2, 0.5], () => `r${n++}`);
   expect(ramped.main.map((s) => [s.id, s.in, s.out, s.speed])).toEqual([['s1', 0, 5, 2], ['r0', 5, 10, 0.5], ['s2', 0, 4, 1]]);
   expect(totalDuration(ramped)).toBe(2.5 + 10 + 4);
+});
+
+test('relink keeps items over the same moment of the same clip', () => {
+  const caption = { id: 'c1', start: 4, duration: 2, text: 'hi there', words: [{ t0: 0, t1: 1, text: 'hi' }, { t0: 1, t1: 2, text: 'there' }] };
+  const base = addItem(addItem(addItem(edit, 'texts', newText('t1', 11)), 'captions', caption), 'audio', newAudio('m1', 4, music, 'music'));
+  // Speeding up the first clip pulls everything left and squeezes the caption.
+  const fast = relink(base, patchSegment(base, 's1', { speed: 2 }));
+  expect(fast.captions[0]).toMatchObject({ start: 2, duration: 1 });
+  expect(fast.captions[0].words![1]).toMatchObject({ t0: 0.5, t1: 1 });
+  expect(fast.texts[0].start).toBe(6);
+  expect(fast.audio[0].start).toBe(4);
+  // Reordering: the text follows the second clip to the front.
+  const swapped = relink(base, moveSegment(base, 's1', 1));
+  expect(swapped.texts[0].start).toBe(1);
+  expect(swapped.captions[0].start).toBe(8);
+  // Trimming the head off pins a caption that lost its moment to the clip edge.
+  expect(relink(base, trimSegment(base, 's1', { in: 6 })).captions[0].start).toBe(0);
 });

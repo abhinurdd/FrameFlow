@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { pickMedia } from '@/editor/pick';
@@ -25,13 +25,19 @@ export default function Home() {
   const createEdit = useEdits((s) => s.createEdit);
   const deleteEdit = useEdits((s) => s.deleteEdit);
   const [url, setUrl] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const openNew = (link: string) => router.push({ pathname: '/new', params: link ? { url: link } : {} });
 
   const openEditor = (id: string) => router.push({ pathname: '/editor/[id]', params: { id } });
   const startEdit = async () => {
-    const assets = await pickMedia();
-    if (assets.length) openEditor(createEdit(assets));
+    setImporting(true);
+    try {
+      const assets = await pickMedia();
+      if (assets.length) openEditor(createEdit(assets));
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
@@ -84,7 +90,7 @@ export default function Home() {
         <Row style={{ justifyContent: 'space-between', marginTop: 26, marginBottom: 10 }}>
           <T variant="h2">Editor</T>
         </Row>
-        <Button title="Edit a video yourself" variant="secondary" icon={<Ionicons name="cut-outline" size={18} color={colors.text} />} onPress={startEdit} />
+        <Button title="Edit a video yourself" loading={importing} variant="secondary" icon={<Ionicons name="cut-outline" size={18} color={colors.text} />} onPress={startEdit} />
         {edits.length > 0 && (
           <View style={{ gap: 8, marginTop: 8 }}>
             {edits.slice(0, 5).map((e) => (
@@ -95,7 +101,11 @@ export default function Home() {
                     <T style={{ fontFamily: fonts.bold }}>{e.name}</T>
                     <T variant="tiny">{e.main.length} {e.main.length === 1 ? 'clip' : 'clips'} · {duration(totalDuration(e))}</T>
                   </View>
-                  <Pressable hitSlop={10} onPress={() => deleteEdit(e.id)}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${e.name}`}
+                    hitSlop={14}
+                    onPress={() => Alert.alert(`Delete "${e.name}"?`, 'This draft will be removed from this phone. It cannot be undone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => deleteEdit(e.id) }])}>
                     <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
                   </Pressable>
                 </Panel>
