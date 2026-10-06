@@ -44,7 +44,12 @@ export async function health() {
   }
 }
 
+/** Files already on the server this session, by local uri, so each is sent once however many tools use it. */
+const uploaded = new Map<string, string>();
+
 async function upload(asset: Asset): Promise<string> {
+  const known = uploaded.get(asset.uri);
+  if (known) return known;
   if (asset.placeholder) throw new ServerError('This video has not been downloaded to your phone yet, so it cannot be processed.');
   const ext = asset.uri.split('.').pop()?.toLowerCase() ?? '';
   const media = await call<RemoteMedia>('/media', {
@@ -52,6 +57,7 @@ async function upload(asset: Asset): Promise<string> {
     headers: { 'Content-Type': MIME[ext] ?? 'application/octet-stream', 'X-Filename': `${asset.id}.${ext}` },
     body: new File(asset.uri),
   });
+  uploaded.set(asset.uri, media.id);
   return media.id;
 }
 
@@ -74,13 +80,30 @@ export async function remoteId(asset: Asset) {
   return asset.remoteId ?? (await upload(asset));
 }
 
-async function runJob(path: string, body: unknown, onProgress?: (p: number) => void) {
+/** Thrown when the person cancels a job. */
+export class Cancelled extends Error {}
+/** A handle for cancelling a running job. */
+export class Stop {
+  cancelled = false;
+  cancel() {
+    this.cancelled = true;
+  }
+}
+
+async function runJob(path: string, body: unknown, onProgress?: (p: number) => void, stop?: Stop) {
   const { jobId } = await post<{ jobId: string }>(path, body);
+  let last = -1;
+  let stalled = 0;
   for (;;) {
+    if (stop?.cancelled) throw new Cancelled();
     const job = await call<Job>(`/jobs/${jobId}`);
     onProgress?.(job.progress);
     if (job.status === 'done') return { jobId, result: job.result ?? {} };
     if (job.status === 'error') throw new ServerError(job.error ?? 'The job failed');
+    // Five minutes with no movement means the job is stuck, not slow.
+    stalled = job.progress === last ? stalled + 1 : 0;
+    last = job.progress;
+    if (stalled > 750) throw new ServerError('This is taking too long. Please try again.');
     await new Promise((r) => setTimeout(r, 400));
   }
 }
@@ -104,9 +127,10 @@ async function mediaTool(path: string, body: unknown, name: string, onProgress?:
   return localAsset(uri, media.kind, { duration: media.duration, width: media.width, height: media.height, name, remoteId: media.id });
 }
 
-export async function render(edit: Edit, settings: RenderSettings, onProgress: (stage: string, p: number) => void) {
+export async function render(edit: Edit, settings: RenderSettings, onProgress: (stage: string, p: number) => void, stop?: Stop) {
   const ready = await withUploads(edit, (done, total) => onProgress(`Uploading ${done + 1} of ${total}`, total ? done / total : 0));
-  const { jobId } = await runJob('/render', { edit: ready, settings }, (p) => onProgress('Rendering', p));
+  if (stop?.cancelled) throw new Cancelled();
+  const { jobId } = await runJob('/render', { edit: ready, settings }, (p) => onProgress('Rendering', p), stop);
   onProgress('Downloading', 1);
   return { uri: await download(`/jobs/${jobId}/file`, `${edit.name.replace(/[^A-Za-z0-9]+/g, '-')}-${jobId}.mp4`), edit: ready };
 }

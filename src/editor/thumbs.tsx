@@ -24,7 +24,8 @@ function whenReady(player: VideoPlayer) {
 function loadThumbs(asset: Asset) {
   let job = cache.get(asset.uri);
   if (!job) {
-    const count = Math.min(24, Math.max(4, Math.ceil(asset.duration / 2)));
+    // Denser for long files, so a short clip cut from an hour of footage still shows its own frames.
+    const count = Math.min(120, Math.max(4, Math.ceil(asset.duration / 2)));
     const times = Array.from({ length: count }, (_, i) => ((i + 0.5) * asset.duration) / count);
     const player = createVideoPlayer(asset.uri);
     job = whenReady(player)
@@ -37,7 +38,7 @@ function loadThumbs(asset: Asset) {
 }
 
 /** Filmstrip for one segment: frames from its own part of the source, at the current zoom. */
-export function SegmentStrip({ asset, segment, width, height }: { asset: Asset; segment: Segment; width: number; height: number }) {
+export function SegmentStrip({ asset, segment, width, height, from = 0, to = width }: { asset: Asset; segment: Segment; width: number; height: number; /** Only tiles between these x positions are drawn, so an hour-long clip costs no more than a short one. */ from?: number; to?: number }) {
   const [thumbs, setThumbs] = useState<VideoThumbnail[]>([]);
   useEffect(() => {
     let alive = true;
@@ -50,22 +51,18 @@ export function SegmentStrip({ asset, segment, width, height }: { asset: Asset; 
 
   const tile = Math.min(92, Math.max(40, height * ((asset.width || 16) / (asset.height || 9))));
   const count = Math.max(1, Math.ceil(width / tile));
-  if (asset.kind === 'image') {
-    return (
-      <View style={{ width, height, flexDirection: 'row', overflow: 'hidden', backgroundColor: colors.surface2 }}>
-        {Array.from({ length: count }, (_, k) => (
-          <Image key={k} source={{ uri: asset.uri }} style={{ width: width / count, height }} contentFit="cover" />
-        ))}
-      </View>
-    );
-  }
+  const each = width / count;
+  const first = Math.max(0, Math.floor(from / each));
+  const last = Math.min(count - 1, Math.floor(to / each));
+  const tiles = Array.from({ length: Math.max(0, last - first + 1) }, (_, n) => first + n);
+  const still = asset.kind === 'image';
   return (
-    <View style={{ width, height, flexDirection: 'row', overflow: 'hidden', backgroundColor: colors.surface2 }}>
-      {thumbs.length > 0 &&
-        Array.from({ length: count }, (_, k) => {
+    <View style={{ width, height, overflow: 'hidden', backgroundColor: colors.surface2 }}>
+      {(still || thumbs.length > 0) &&
+        tiles.map((k) => {
           const sourceTime = segment.in + ((k + 0.5) / count) * (segment.out - segment.in);
           const index = Math.min(thumbs.length - 1, Math.floor((sourceTime / asset.duration) * thumbs.length));
-          return <Image key={k} source={thumbs[index]} style={{ width: width / count, height }} contentFit="cover" />;
+          return <Image key={k} source={still ? { uri: asset.uri } : thumbs[index]} style={{ position: 'absolute', left: k * each, width: each, height }} contentFit="cover" />;
         })}
     </View>
   );

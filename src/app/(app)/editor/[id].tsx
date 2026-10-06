@@ -42,6 +42,7 @@ import {
   aspectRatio,
   captionsFromWords,
   cutCaptionWords,
+  deleteSegment,
   duplicateItem,
   duplicateSegment,
   locate,
@@ -58,7 +59,6 @@ import {
   rampSegment,
   relink,
   removeItem,
-  removeSegment,
   replaceSegmentAsset,
   rippleCut,
   segmentDuration,
@@ -108,18 +108,28 @@ const PANEL_TITLES: Record<NonNullable<PanelId>, string> = {
 const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'er', 'matlab', 'basically', 'actually', 'yaar', 'toh', 'na', 'like', 'मतलब', 'यार', 'तो', 'ना', 'अं', 'हम्म']);
 const bare = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{M}]/gu, '');
 
-function useEditHistory(edit: Edit | undefined) {
+function useEditHistory(id: string) {
   const setEdit = useEdits((s) => s.setEdit);
   const [history, setHistory] = useState<{ past: Edit[]; future: Edit[] }>({ past: [], future: [] });
-  // The edit as it was before an uncommitted live preview (a slider being dragged).
+  // The edit as it was before an uncommitted live preview (a slider being dragged, text being typed).
   const [base, setBase] = useState<Edit | null>(null);
+  // Always the stored edit, never a render's copy: slow tools finish long after the tap that started them.
+  const now = () => useEdits.getState().edits.find((e) => e.id === id);
+  /** Step to another snapshot. The project name is not part of history. */
+  const restore = (to: Edit, from: Edit) => {
+    const next = { ...to, name: from.name };
+    setEdit(next);
+    return next;
+  };
   return {
     preview(next: Edit) {
+      const edit = now();
       if (!edit) return;
       if (!base) setBase(edit);
       setEdit(next);
     },
     commit(next: Edit) {
+      const edit = now();
       if (!edit) return;
       const from = base ?? edit;
       setBase(null);
@@ -127,29 +137,41 @@ function useEditHistory(edit: Edit | undefined) {
       setHistory((h) => ({ past: [...h.past, from].slice(-100), future: [] }));
       setEdit(next);
     },
+    /** Turn a preview nobody committed (typing, then closing the panel) into its own undo step. */
+    flush() {
+      if (!base) return;
+      setHistory((h) => ({ past: [...h.past, base].slice(-100), future: [] }));
+      setBase(null);
+    },
     undo() {
+      const edit = now();
+      if (!edit) return undefined;
+      if (base) {
+        setHistory((h) => ({ past: h.past, future: [...h.future, edit] }));
+        setBase(null);
+        return restore(base, edit);
+      }
       const prev = history.past[history.past.length - 1];
-      if (!prev || !edit) return undefined;
+      if (!prev) return undefined;
       setHistory((h) => ({ past: h.past.slice(0, -1), future: [...h.future, edit] }));
-      setEdit(prev);
-      return prev;
+      return restore(prev, edit);
     },
     redo() {
+      const edit = now();
       const next = history.future[history.future.length - 1];
-      if (!next || !edit) return undefined;
+      if (!next || !edit || base) return undefined;
       setHistory((h) => ({ past: [...h.past, edit], future: h.future.slice(0, -1) }));
-      setEdit(next);
-      return next;
+      return restore(next, edit);
     },
-    canUndo: history.past.length > 0,
-    canRedo: history.future.length > 0,
+    canUndo: history.past.length > 0 || base !== null,
+    canRedo: history.future.length > 0 && base === null,
   };
 }
 
 export default function Editor() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const edit = useEdits((s) => s.edits.find((e) => e.id === id));
-  const history = useEditHistory(edit);
+  const history = useEditHistory(id);
   const playback = usePlayback(() => useEdits.getState().edits.find((e) => e.id === id));
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [selection, setSelection] = useState<Selection>(null);
@@ -204,25 +226,34 @@ export default function Editor() {
   const canvasH = Math.max(0, Math.min(area.h - 8, (area.w - 24) / ratio));
   const canvas: CanvasSize = { w: canvasH * ratio, h: canvasH };
 
+  const current = () => useEdits.getState().edits.find((e) => e.id === id)!;
+
   /**
    * Apply an edit, record it for undo and re-sync the players. When the main track
    * changes shape, text, captions and overlays stay attached to their clip unless
    * the caller has already moved them (`link` false).
    */
-  function apply(change: Edit, at = time, link = true) {
-    if (change === edit || !edit) return;
-    const next = link && change.main !== edit.main ? relink(edit, change) : change;
+  function apply(change: Edit, at = playback.getTime(), link = true) {
+    // Compare against the stored edit: a slow tool calls this long after the render that created it.
+    const before = current();
+    if (!before || change === before) return;
+    const next = link && change.main !== before.main ? relink(before, change) : change;
     history.commit(next);
     seek(Math.min(at, totalDuration(next)), next);
   }
   /** `commit` false = live preview while a slider moves; true = final value. */
   const change = (next: Edit, commit: boolean) => (commit ? apply(next) : history.preview(next));
-  const togglePanel = (p: PanelId) => setPanel(panel === p ? null : p);
+  const openPanel = (p: PanelId) => {
+    history.flush();
+    setPanel(p);
+  };
+  const togglePanel = (p: PanelId) => openPanel(panel === p ? null : p);
   const select = (s: Selection) => {
+    history.flush();
     setSelection(s);
     setPanel(null);
   };
-  const current = () => useEdits.getState().edits.find((e) => e.id === id)!;
+
 
   function patchVisual(patch: { transform?: Transform; keyframes?: Keyframe[] }, commit = true) {
     if (selSegment) change(patchSegment(edit!, selSegment.id, patch), commit);
@@ -282,6 +313,7 @@ export default function Editor() {
 
   async function addMusic() {
     const asset = await pickAudio();
+    if (asset === 'unreadable') return Alert.alert("Can't use that file", 'FrameFlow could not read it as audio. Try an MP3 or M4A file.');
     if (!asset) return;
     const item = newAudio(uid('aud'), time, asset, 'music');
     apply(addItem(addAssets(current(), [asset]), 'audio', item));
@@ -306,7 +338,7 @@ export default function Editor() {
     setRecordingFrom(null);
     if (!recorder.uri) return;
     const duration = await probeDuration(recorder.uri);
-    if (!duration) return;
+    if (!duration) return Alert.alert('Recording failed', 'Nothing was recorded. Check the microphone and try again.');
     const asset = localAsset(recorder.uri, 'audio', { duration, name: 'Voice-over' });
     apply(addItem(addAssets(current(), [asset]), 'audio', newAudio(uid('aud'), from, asset, 'voiceover')), from);
   }
@@ -326,13 +358,7 @@ export default function Editor() {
 
   function deleteSelected() {
     if (selection && selection.track !== 'main') apply(removeItem(edit!, selection.track, selection.id));
-    else if (target) {
-      // Text, captions and audio after the clip slide left with the rest of the video.
-      const from = starts[edit!.main.indexOf(target)];
-      const removed = removeSegment(edit!, target.id);
-      const shifted = rippleCut({ ...edit!, main: [] }, [{ start: from, end: from + segmentDuration(target) }], () => uid('seg'));
-      apply({ ...shifted, main: removed.main }, time, false);
-    }
+    else if (target) apply(deleteSegment(edit!, target.id), time, false);
     setSelection(null);
     setPanel(null);
   }
@@ -343,6 +369,12 @@ export default function Editor() {
   }
 
   // ---- Server tools ----
+
+  /** Put a processed copy of a clip's video in its place, keeping the clip's current trim. */
+  function swapSource(segId: string, asset: Asset) {
+    const seg = current().main.find((s) => s.id === segId);
+    if (seg) apply(replaceSegmentAsset(current(), segId, asset, { in: seg.in, out: seg.out }), playback.getTime(), false);
+  }
 
   const reverseClip = (seg: Segment, asset: Asset) =>
     run('Reversing', async (p) => {
@@ -362,29 +394,32 @@ export default function Editor() {
       apply({ ...addAssets(cut, [still]), main });
     });
 
-  const extractAudio = (seg: Segment, asset: Asset, start: number) =>
-    run('Extracting audio', async () => {
+  const extractAudio = (seg: Segment, asset: Asset, start: number) => {
+    // The separated audio would play at normal speed and drift out of sync.
+    if (seg.speed !== 1) return Alert.alert('Set the speed to 1x first', 'Audio can only be separated from a clip playing at normal speed.');
+    return run('Extracting audio', async () => {
       const audio = await tools.extractAudio(asset);
       const item = { ...newAudio(uid('aud'), start, audio, 'extracted'), in: seg.in, out: Math.min(seg.out, audio.duration) };
       apply(addItem(addAssets(patchSegment(current(), seg.id, { muted: true }), [audio]), 'audio', item));
     });
+  };
 
   const cleanAudio = (seg: Segment, asset: Asset) =>
     run('Cleaning audio', async (p) => {
       const clean = await tools.denoise(asset, p);
-      apply(replaceSegmentAsset(current(), seg.id, clean, { in: seg.in, out: seg.out }));
+      swapSource(seg.id, clean);
     });
 
   const stabilizeClip = (seg: Segment, asset: Asset) =>
     run('Stabilizing', async (p) => {
       const steady = await tools.stabilize(asset, p);
-      apply(replaceSegmentAsset(current(), seg.id, steady, { in: seg.in, out: seg.out }));
+      swapSource(seg.id, steady);
     });
 
   const changeVoice = (seg: Segment, asset: Asset, effect: VoiceEffect) =>
     run('Changing voice', async (p) => {
       const voiced = await tools.voice(asset, effect, p);
-      apply(replaceSegmentAsset(current(), seg.id, voiced, { in: seg.in, out: seg.out }));
+      swapSource(seg.id, voiced);
     });
 
   const speak = (text: string) =>
@@ -728,7 +763,7 @@ export default function Editor() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         {/* Top bar */}
         <Row style={{ paddingLeft: 4, paddingRight: 12, height: 52, justifyContent: 'space-between' }}>
           <Row gap={2} style={{ flex: 1 }}>
@@ -786,7 +821,8 @@ export default function Editor() {
         </View>
         <AudioTracks edit={edit} time={time} playing={playing} />
 
-        <View>
+        {/* Editing is paused while a slow tool runs, so its result lands on the edit it started from. */}
+        <View pointerEvents={busy ? 'none' : 'auto'} style={{ opacity: busy ? 0.5 : 1 }}>
           {/* Transport */}
           <Row style={{ height: 48, paddingHorizontal: 8, justifyContent: 'space-between' }}>
             <T style={{ width: 104, paddingLeft: 8, fontFamily: fonts.semibold, fontSize: 12.5, color: colors.text, fontVariant: ['tabular-nums'] }}>
@@ -839,14 +875,14 @@ export default function Editor() {
 
           {/* The open tool's options cover the timeline; the canvas above stays put. */}
           {body && panel && (
-            <ToolSheet title={PANEL_TITLES[panel]} onClose={() => setPanel(null)}>
+            <ToolSheet title={PANEL_TITLES[panel]} onClose={() => openPanel(null)}>
               {body}
             </ToolSheet>
           )}
         </View>
 
         {/* Tools */}
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 6, paddingBottom: 2 }}>
+        <View pointerEvents={busy ? 'none' : 'auto'} style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 6, paddingBottom: 2, opacity: busy ? 0.5 : 1 }}>
           {/* Keyed by context so each toolbar starts scrolled to its first tool. */}
           <ScrollView key={selection?.track ?? 'root'} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 4 }}>
             {toolbar.map((t) => (

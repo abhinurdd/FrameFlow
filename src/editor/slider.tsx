@@ -31,23 +31,31 @@ export function Slider({
     // Snap to the neutral point so "unchanged" is easy to hit.
     return min < 0 && Math.abs(v) < (max - min) * 0.03 ? 0 : v;
   };
+  // Sideways drags only, so a slider inside a scrolling panel does not move when the panel is scrolled.
   const drag = Gesture.Pan()
     .runOnJS(true)
-    .minDistance(0)
-    .onBegin((e) => setLive(at(e.x)))
+    .activeOffsetX([-6, 6])
+    .failOffsetY([-12, 12])
     .onChange((e) => {
       const v = at(e.x);
       setLive(v);
       onChange?.(v);
     })
-    .onEnd((e) => onCommit(at(e.x)))
+    .onEnd((e, success) => {
+      if (success) onCommit(at(e.x));
+    })
     .onFinalize(() => setLive(null));
+  const tap = Gesture.Tap()
+    .runOnJS(true)
+    .onEnd((e, success) => {
+      if (success) onCommit(at(e.x));
+    });
   const pct = ((shown - min) / (max - min)) * 100;
   const zero = min < 0 ? (-min / (max - min)) * 100 : 0;
   return (
     <Row style={{ height: 40 }} gap={10}>
       <T style={{ width: 86, fontSize: 12, fontFamily: fonts.semibold, color: colors.textSecondary }}>{label}</T>
-      <GestureDetector gesture={drag}>
+      <GestureDetector gesture={Gesture.Exclusive(drag, tap)}>
         <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} accessibilityRole="adjustable" accessibilityLabel={label} accessibilityValue={{ text: format(shown) }} style={{ flex: 1, height: 40, justifyContent: 'center' }}>
           <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.lineStrong }} />
           <View style={{ position: 'absolute', height: 4, borderRadius: 2, backgroundColor: colors.saffron, left: `${Math.min(zero, pct)}%`, width: `${Math.abs(pct - zero)}%` }} />

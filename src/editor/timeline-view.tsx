@@ -61,6 +61,8 @@ function Handle({ side, label, onDrag, scroller, height }: { side: 'start' | 'en
   const pan = Gesture.Pan()
     .runOnJS(true)
     .activeOffsetX([-3, 3])
+    // A finger-sized grab area around a 16pt handle.
+    .hitSlop({ left: 14, right: 14, top: 8, bottom: 8 })
     // The timeline must not scroll while a handle is being dragged.
     .blocksExternalGesture(scroller)
     .onChange((e) => setDx(e.translationX))
@@ -185,24 +187,34 @@ export function TimelineView({
   const { width: screenW } = useWindowDimensions();
   const [pps, setPps] = useState(60);
   const [pinchBase, setPinchBase] = useState(60);
+  // While zooming, the scroll position is ours to set: it must not be read back as a scrub.
+  const [zooming, setZooming] = useState(false);
   const scroller = useRef<ScrollView>(null);
   const userScrolling = useRef(false);
   const zoom = (factor: number) => setPps((p) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, p * factor)));
 
   // Keep the timeline under the fixed playhead while playing or after an edit.
   useEffect(() => {
+    if (zooming) userScrolling.current = false;
     if (!userScrolling.current) scroller.current?.scrollTo({ x: time * pps, animated: false });
-  }, [time, pps]);
+  }, [time, pps, zooming]);
 
   const pinch = Gesture.Pinch()
     .runOnJS(true)
-    .onStart(() => setPinchBase(pps))
+    .onStart(() => {
+      setPinchBase(pps);
+      setZooming(true);
+    })
+    .onFinalize(() => setZooming(false))
     .onUpdate((e) => setPps(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, pinchBase * e.scale))));
 
   const total = totalDuration(edit);
   const starts = segmentStarts(edit);
   const step = RULER_STEPS.find((s) => s * pps >= 56) ?? 600;
   const ticks = Array.from({ length: Math.min(400, Math.floor(total / step) + 1) }, (_, i) => i * step);
+  // Only what is near the playhead is drawn, so an hour-long project stays as light as a short one.
+  const viewFrom = time * pps - screenW * 1.5;
+  const viewTo = time * pps + screenW * 1.5;
   const rows = TRACKS.flatMap((track) => lanes(bars(edit, track.id)).map((lane, n) => ({ track, lane, first: n === 0 })));
 
   return (
@@ -221,7 +233,7 @@ export function TimelineView({
                 onScrubStart();
               }}
               onScroll={(e) => {
-                if (userScrolling.current) onScrub(e.nativeEvent.contentOffset.x / pps);
+                if (userScrolling.current && !zooming) onScrub(e.nativeEvent.contentOffset.x / pps);
               }}
               onScrollEndDrag={(e) => {
                 if (Math.abs(e.nativeEvent.velocity?.x ?? 0) < 0.05) userScrolling.current = false;
@@ -255,7 +267,7 @@ export function TimelineView({
                         onPress={() => onSelect({ track: 'main', id: seg.id })}
                         style={{ position: 'absolute', left: starts[i] * pps, width, height: MAIN_H, zIndex: selected ? 2 : 0 }}>
                         <View style={{ flex: 1, marginHorizontal: 1, borderRadius: 7, overflow: 'hidden', borderWidth: 2, borderColor: selected ? colors.select : 'transparent' }}>
-                          {asset && <SegmentStrip asset={asset} segment={seg} width={Math.max(width - 6, 1)} height={MAIN_H - 4} />}
+                          {asset && <SegmentStrip asset={asset} segment={seg} width={Math.max(width - 6, 1)} height={MAIN_H - 4} from={viewFrom - starts[i] * pps} to={viewTo - starts[i] * pps} />}
                           {width > 48 && (seg.speed !== 1 || seg.muted || seg.look.filter !== 'none' || seg.keyframes.length > 0) && (
                             <View style={{ position: 'absolute', left: selected ? 20 : 4, top: 4, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 5, height: 16, borderRadius: 4, backgroundColor: colors.scrim }}>
                               {seg.speed !== 1 && <T style={{ fontSize: 10.5, fontFamily: fonts.bold }}>{seg.speed}x</T>}
@@ -288,7 +300,7 @@ export function TimelineView({
 
                 {rows.map(({ track, lane }, r) => (
                   <View key={r} style={{ height: LANE_H, marginTop: r === 0 ? 6 : 0 }}>
-                    {lane.map((bar) => (
+                    {lane.filter((bar) => bar.start * pps < viewTo && (bar.start + bar.duration) * pps > viewFrom).map((bar) => (
                       <ItemBar
                         key={bar.id}
                         bar={bar}

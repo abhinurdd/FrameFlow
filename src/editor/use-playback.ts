@@ -19,7 +19,7 @@ const newSlot = (): Slot => ({ segId: null, assetId: null, ready: false, playing
 
 type Wanted = { loc: Location; gain: number; active: boolean };
 
-function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit, playing: boolean) {
+function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit, playing: boolean, onReady: () => void) {
   if (!want) {
     if (slot.playing) player.pause();
     slot.playing = false;
@@ -41,9 +41,15 @@ function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit,
     player
       .replaceAsync(asset.uri)
       .then(() => {
-        if (slot.assetId === asset.id) slot.ready = true;
+        if (slot.assetId !== asset.id) return;
+        slot.ready = true;
+        // Nothing else moves a paused player to its frame once the file has loaded.
+        onReady();
       })
-      .catch(() => {});
+      .catch(() => {
+        // Forget the failed load so the next seek tries again.
+        if (slot.assetId === asset.id) slot.assetId = null;
+      });
     return;
   }
   if (!slot.ready) return;
@@ -74,7 +80,7 @@ function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit,
 }
 
 /** Point the two players at what the main track needs at `t`. Returns the segment each slot shows. */
-function sync(players: VideoPlayer[], slots: Slot[], edit: Edit, t: number, playing: boolean): (string | null)[] {
+function sync(players: VideoPlayer[], slots: Slot[], edit: Edit, t: number, playing: boolean, onReady: () => void): (string | null)[] {
   const frame = mainFrameAt(edit, t);
   const wanted: Wanted[] = [];
   if (frame?.b) {
@@ -95,7 +101,7 @@ function sync(players: VideoPlayer[], slots: Slot[], edit: Edit, t: number, play
     const k = assign.findIndex((a) => !a);
     if (k >= 0) assign[k] = w;
   }
-  assign.forEach((w, k) => drive(players[k], slots[k], w, edit, playing));
+  assign.forEach((w, k) => drive(players[k], slots[k], w, edit, playing, onReady));
   return assign.map((w) => (w?.active ? w.loc.segment.id : null));
 }
 
@@ -117,11 +123,16 @@ export function usePlayback(getEdit: () => Edit | undefined) {
   const [slotSegs, setSlotSegs] = useState<(string | null)[]>([null, null]);
   const state = useRef({ time: 0, playing: false, raf: 0, last: 0, frame: 0, slots: [newSlot(), newSlot()], shown: [null, null] as (string | null)[] });
 
+  function resync() {
+    const edit = getEdit();
+    if (edit) apply(edit, state.current.time, state.current.playing);
+  }
+
   function apply(edit: Edit, t: number, play: boolean) {
     const st = state.current;
     st.time = t;
     st.playing = play;
-    const shown = sync([p0, p1], st.slots, edit, t, play);
+    const shown = sync([p0, p1], st.slots, edit, t, play, resync);
     if (shown[0] !== st.shown[0] || shown[1] !== st.shown[1]) {
       st.shown = shown;
       setSlotSegs(shown);
@@ -164,6 +175,8 @@ export function usePlayback(getEdit: () => Edit | undefined) {
     slotSegs,
     time,
     playing,
+    /** The playhead right now, for code that runs long after a render. */
+    getTime: () => state.current.time,
     /** Move the playhead and pause. Pass the edit explicitly right after changing it. */
     seek(t: number, edit = getEdit()) {
       if (!edit) return;

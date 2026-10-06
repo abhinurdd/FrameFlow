@@ -40,7 +40,11 @@ async function normalizePhoto(uri: string, width: number, height: number) {
 export function probeDuration(uri: string) {
   return new Promise<number>((resolve) => {
     const player = createVideoPlayer(uri);
+    let settled = false;
     const done = (seconds: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       sub.remove();
       player.release();
       resolve(seconds);
@@ -49,6 +53,8 @@ export function probeDuration(uri: string) {
       if (status === 'readyToPlay') done(player.duration || 0);
       if (status === 'error') done(0);
     });
+    // A file the player never reports on would otherwise leave the caller waiting forever.
+    const timer = setTimeout(() => done(0), 10000);
   });
 }
 
@@ -69,14 +75,14 @@ export async function pickMedia(kinds: ('videos' | 'images')[] = ['videos', 'ima
   );
 }
 
-export async function pickAudio(): Promise<Asset | null> {
+export async function pickAudio(): Promise<Asset | 'unreadable' | null> {
   const result = await DocumentPicker.getDocumentAsync({ type: 'audio/*', copyToCacheDirectory: true });
   if (result.canceled) return null;
   const file = result.assets[0];
   const id = uid('ast');
   const uri = keep(file.uri, id);
   const duration = await probeDuration(uri);
-  return duration ? { id, uri, kind: 'audio', duration, width: 0, height: 0, name: file.name } : null;
+  return duration ? { id, uri, kind: 'audio', duration, width: 0, height: 0, name: file.name } : 'unreadable';
 }
 
 /** Register a file the app produced itself (a recording, or a download from the media server). */

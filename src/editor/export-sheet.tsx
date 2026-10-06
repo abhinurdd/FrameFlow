@@ -8,7 +8,7 @@ import { aspectRatio, totalDuration, type Edit } from '@/engine/timeline';
 import { Button, Chip, Row, T } from '@/ui/primitives';
 import { colors, fonts } from '@/ui/theme';
 
-import { render, type RenderSettings } from './api';
+import { Cancelled, render, Stop, type RenderSettings } from './api';
 
 const HEIGHTS: { value: RenderSettings['height']; label: string }[] = [
   { value: 720, label: '720p' },
@@ -18,12 +18,13 @@ const HEIGHTS: { value: RenderSettings['height']; label: string }[] = [
 ];
 const RATES: RenderSettings['fps'][] = [24, 30, 60];
 
-type Stage = { kind: 'idle' } | { kind: 'working'; label: string; progress: number } | { kind: 'done'; uri: string; saved: boolean } | { kind: 'error'; message: string };
+type Stage = { kind: 'idle' } | { kind: 'working'; label: string; progress: number } | { kind: 'done'; uri: string; saved: boolean; note?: string } | { kind: 'error'; message: string };
 
 /** Export: choose quality, render on the media server, then save or share the file. */
 export function ExportSheet({ edit, onClose, onUploaded }: { edit: Edit; onClose: () => void; onUploaded: (edit: Edit) => void }) {
   const [settings, setSettings] = useState<RenderSettings>({ height: 1080, fps: 30 });
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
+  const [stop, setStop] = useState(() => new Stop());
   const offline = edit.main.some((s) => edit.assets[s.assetId]?.placeholder);
   const ratio = aspectRatio(edit);
   // The short side carries the "p" number, as on every other editor.
@@ -34,24 +35,28 @@ export function ExportSheet({ edit, onClose, onUploaded }: { edit: Edit; onClose
 
   async function start() {
     setStage({ kind: 'working', label: 'Preparing', progress: 0 });
+    const flag = new Stop();
+    setStop(flag);
     try {
       const pixelHeight = ratio >= 1 ? short : Math.round(short / ratio / 2) * 2;
-      const out = await render(edit, { ...settings, height: pixelHeight as RenderSettings['height'], bitrateMbps: mbps }, (label, progress) => setStage({ kind: 'working', label, progress }));
+      const out = await render(edit, { ...settings, height: pixelHeight as RenderSettings['height'], bitrateMbps: mbps }, (label, progress) => setStage({ kind: 'working', label, progress }), flag);
       onUploaded(out.edit);
       setStage({ kind: 'done', uri: out.uri, saved: false });
     } catch (e) {
-      setStage({ kind: 'error', message: e instanceof Error ? e.message : 'Export failed' });
+      setStage(e instanceof Cancelled ? { kind: 'idle' } : { kind: 'error', message: e instanceof Error ? e.message : 'Export failed' });
     }
   }
 
   async function save(uri: string) {
-    const permission = await MediaLibrary.requestPermissionsAsync(true);
-    if (!permission.granted) {
-      setStage({ kind: 'error', message: 'Allow photo library access to save the video.' });
-      return;
+    // A failed save keeps the finished video, so it can be retried or shared without rendering again.
+    try {
+      const permission = await MediaLibrary.requestPermissionsAsync(true);
+      if (!permission.granted) return setStage({ kind: 'done', uri, saved: false, note: 'Allow photo library access in Settings to save, or use Share.' });
+      await MediaLibrary.saveToLibraryAsync(uri);
+      setStage({ kind: 'done', uri, saved: true });
+    } catch {
+      setStage({ kind: 'done', uri, saved: false, note: 'Could not save to your gallery. Try again, or use Share.' });
     }
-    await MediaLibrary.saveToLibraryAsync(uri);
-    setStage({ kind: 'done', uri, saved: true });
   }
 
   return (
@@ -108,7 +113,14 @@ export function ExportSheet({ edit, onClose, onUploaded }: { edit: Edit; onClose
             <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.surface2, overflow: 'hidden' }}>
               <View style={{ width: `${Math.round(stage.progress * 100)}%`, height: 6, backgroundColor: colors.saffron }} />
             </View>
-            <T variant="muted">You can keep this screen open; the render runs on the server.</T>
+            <Button
+              title="Cancel"
+              variant="secondary"
+              onPress={() => {
+                stop.cancel();
+                setStage({ kind: 'idle' });
+              }}
+            />
           </View>
         )}
 
@@ -118,6 +130,7 @@ export function ExportSheet({ edit, onClose, onUploaded }: { edit: Edit; onClose
               <Ionicons name="checkmark-circle" size={22} color={colors.score} />
               <T style={{ fontFamily: fonts.bold }}>{stage.saved ? 'Saved to your gallery' : 'Your video is ready'}</T>
             </Row>
+            {stage.note && <T style={{ color: colors.amber, fontSize: 13 }}>{stage.note}</T>}
             <Row gap={8}>
               <Button title={stage.saved ? 'Saved' : 'Save to gallery'} disabled={stage.saved} style={{ flex: 1 }} onPress={() => save(stage.uri)} />
               <Button title="Share" variant="secondary" style={{ flex: 1 }} onPress={() => Sharing.shareAsync(stage.uri, { mimeType: 'video/mp4' })} />

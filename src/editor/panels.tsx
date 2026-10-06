@@ -429,8 +429,11 @@ export function TranscriptPanel({
   onRemoveFillers: () => void;
 }) {
   const [picked, setPicked] = useState<{ id: string; index: number } | null>(null);
-  const timed = captions.filter((c) => c.words?.length).sort((a, b) => a.start - b.start);
-  const fillers = timed.reduce((n, c) => n + c.words!.filter((w) => isFiller(w.text)).length, 0);
+  const all = captions.filter((c) => c.words?.length).sort((a, b) => a.start - b.start);
+  // A long video has thousands of words; show the lines around the playhead and follow it.
+  const here = Math.max(0, all.findIndex((c) => c.start + c.duration > time));
+  const timed = all.slice(Math.max(0, here - 4), here + 12);
+  const fillers = all.reduce((n, c) => n + c.words!.filter((w) => isFiller(w.text)).length, 0);
   const pickedWord = picked ? timed.find((c) => c.id === picked.id)?.words?.[picked.index] : undefined;
   return (
     <View style={{ gap: 8 }}>
