@@ -5,6 +5,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { existsSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -47,7 +48,12 @@ const { createApp } = await import('./index.ts');
 const { ffmpeg, run, FFPROBE } = await import('./ff.ts');
 const { Painter } = await import('./draw.ts');
 const { gainExpression } = await import('./audio.ts');
-const { detectBeats, wordsFromWhisper } = await import('./tools.ts');
+const { detectBeats, fixWordTimings, wordsFromWhisper } = await import('./tools.ts');
+// The test work dir has no models; use the real one when it is installed, so the whisper path is exercised.
+if (!process.env.WHISPER_MODEL && existsSync(join(WORK, 'models'))) {
+  const model = readdirSync(join(WORK, 'models')).filter((f) => f.endsWith('.bin')).sort()[0];
+  if (model) process.env.WHISPER_MODEL = join(WORK, 'models', model);
+}
 const { canvasSize } = await import('./render.ts');
 
 type Info = { id: string; kind: 'video' | 'image' | 'audio'; duration: number; width: number; height: number };
@@ -551,4 +557,160 @@ test('transcribe reports when whisper is not set up, and parses whisper.cpp outp
     ],
   });
   assert.deepEqual(words, [{ t0: 0, t1: 0.42, text: 'नमस्ते,' }, { t0: 0.5, t1: 0.9, text: 'dosto' }]);
+});
+
+/** Download a job's file next to the samples and probe it. */
+async function fetched(id: string, name: string) {
+  const res = await fetch(`${base}/jobs/${id}/file`);
+  assert.equal(res.status, 200);
+  const file = join(SAMPLES, name);
+  await writeFile(file, Buffer.from(await res.arrayBuffer()));
+  const probe = JSON.parse((await run(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file])).stdout);
+  return { file, streams: probe.streams as any[], duration: Number(probe.format.duration) };
+}
+
+/** Dominant pitch of a steady tone, from its zero crossings. */
+async function pitchOf(file: string, from: number, to: number) {
+  const { data } = await ffmpeg(['-v', 'error', '-ss', String(from), '-t', String(to - from), '-i', file, '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', 'pipe:1'], { binary: true });
+  const pcm = new Float32Array(data.buffer, data.byteOffset, Math.floor(data.byteLength / 4));
+  let crossings = 0;
+  for (let i = 1; i < pcm.length; i++) if (pcm[i - 1] < 0 !== pcm[i] < 0) crossings++;
+  return crossings / 2 / (pcm.length / 16000);
+}
+
+test('tools: stabilize keeps size, length and audio', async () => {
+  const done = await job('/tools/stabilize', { mediaId: assets.land.remoteId });
+  assert.equal(done.status, 'done', done.error ?? '');
+  assert.deepEqual([done.result.media.kind, done.result.media.width, done.result.media.height], ['video', 1280, 720]);
+  assert.ok(Math.abs(done.result.media.duration - 6) < 0.1, `duration ${done.result.media.duration}`);
+  assert.match(done.result.method, /^(vidstab|deshake)$/);
+  const out = await fetched(done.id, 'tool-stabilized.mp4');
+  assert.ok(out.streams.some((s) => s.codec_type === 'audio'), 'audio is kept');
+  assert.ok((await loudness(out.file, 1, 2)) > 0.02);
+  const audioOnly = await job('/tools/stabilize', { mediaId: assets.music.remoteId });
+  assert.equal(audioOnly.status, 'error');
+  assert.match(audioOnly.error!, /needs a video/);
+});
+
+test('tools: voice effects keep the length and change the sound', async () => {
+  // music.wav is a steady 220 Hz tone, 8 s long.
+  const original = join(FIXTURES, 'music.wav');
+  assert.ok(Math.abs((await pitchOf(original, 2, 4)) - 220) < 3);
+  const level = await loudness(original, 2, 4);
+  for (const effect of ['deep', 'chipmunk', 'robot', 'echo', 'telephone']) {
+    const done = await job('/tools/voice', { mediaId: assets.music.remoteId, effect });
+    assert.equal(done.status, 'done', done.error ?? '');
+    assert.equal(done.result.media.kind, 'audio');
+    assert.ok(Math.abs(done.result.media.duration - 8) < 0.06, `${effect}: duration ${done.result.media.duration}`);
+    const out = await fetched(done.id, `tool-voice-${effect}.m4a`);
+    assert.equal(out.streams[0].codec_name, 'aac');
+    assert.ok((await loudness(out.file, 2, 4)) > 0.004, `${effect} is not silent`);
+    assert.ok((await loudness(out.file, 7, 7.9)) > 0.004, `${effect} lasts to the end`);
+    const hz = await pitchOf(out.file, 2, 4);
+    if (effect === 'deep') assert.ok(Math.abs(hz - 165) < 4, `deep is 220 x 0.75 (${hz})`);
+    if (effect === 'chipmunk') assert.ok(Math.abs(hz - 330) < 6, `chipmunk is 220 x 1.5 (${hz})`);
+    if (effect === 'robot') assert.ok(Math.abs(hz - 220) > 20, `robot shifts the tone (${hz})`);
+    if (effect === 'echo') assert.ok(Math.abs(hz - 220) < 4, `echo keeps the pitch (${hz})`);
+    // 220 Hz is below a telephone's band.
+    if (effect === 'telephone') assert.ok((await loudness(out.file, 2, 4)) < level * 0.7, 'telephone cuts the low tone');
+  }
+  // Video in: the picture is copied, the sound replaced.
+  const video = await job('/tools/voice', { mediaId: assets.land.remoteId, effect: 'chipmunk' });
+  assert.equal(video.status, 'done', video.error ?? '');
+  assert.deepEqual([video.result.media.kind, video.result.media.width, video.result.media.height], ['video', 1280, 720]);
+  assert.ok(Math.abs(video.result.media.duration - 6) < 0.06);
+  const out = await fetched(video.id, 'tool-voice-video.mp4');
+  assert.ok(Math.abs((await pitchOf(out.file, 2, 4)) - 660) < 12, '440 Hz becomes 660 Hz');
+
+  assert.equal((await post('/tools/voice', { mediaId: assets.music.remoteId, effect: 'alien' })).status, 400);
+  assert.equal((await post('/tools/voice', { mediaId: assets.music.remoteId })).status, 400);
+});
+
+test('tools: text to speech', async () => {
+  const health = (await (await fetch(`${base}/health`)).json()) as { tts: boolean };
+  assert.equal(typeof health.tts, 'boolean');
+  assert.equal((await post('/tools/tts', { text: 'x'.repeat(2001) })).status, 400);
+  assert.equal((await post('/tools/tts', { text: '   ' })).status, 400);
+  assert.equal((await post('/tools/tts', { text: 'hello', language: 'fr' })).status, 400);
+  if (!health.tts) {
+    const done = await job('/tools/tts', { text: 'hello' });
+    assert.equal(done.status, 'error');
+    assert.match(done.error!, /text to speech is not set up/);
+    return;
+  }
+  const cases = [
+    { name: 'hi', body: { text: 'नमस्ते दोस्तों, आज हम एक नई कहानी सुनेंगे।', language: 'hi' } },
+    { name: 'hi-detected', body: { text: 'यह कहानी बहुत अच्छी है।' } },
+    { name: 'en', body: { text: 'Hello friends, welcome back to the channel.', language: 'en' } },
+  ];
+  for (const c of cases) {
+    const done = await job('/tools/tts', c.body);
+    assert.equal(done.status, 'done', done.error ?? '');
+    assert.equal(done.result.media.kind, 'audio');
+    assert.ok(done.result.media.duration > 1 && done.result.media.duration < 15, `${c.name}: ${done.result.media.duration} s`);
+    const out = await fetched(done.id, `tool-tts-${c.name}.m4a`);
+    assert.deepEqual([out.streams[0].codec_name, Number(out.streams[0].sample_rate)], ['aac', 48000]);
+    assert.ok((await loudness(out.file, 0.3, done.result.media.duration - 0.3)) > 0.01, `${c.name} is audible`);
+    console.log(`  tts ${c.name}: voice ${done.result.voice}, ${done.result.media.duration.toFixed(2)} s`);
+  }
+});
+
+test('word timings: zero-length runs are spread, and the list is monotonic', () => {
+  const fixed = fixWordTimings([
+    { t0: 7.0, t1: 7.4, text: 'a' },
+    { t0: 7.8, t1: 7.8, text: 'b' },
+    { t0: 7.8, t1: 7.8, text: 'c' },
+    { t0: 7.8, t1: 7.8, text: 'd' },
+    { t0: 8.4, t1: 8.9, text: 'e' },
+    { t0: 8.9, t1: 8.9, text: 'f' },
+    { t0: 12, t1: 12.5, text: 'g' },
+    { t0: 11.9, t1: 12.6, text: 'h' },
+    { t0: 13, t1: 13, text: 'i' },
+    { t0: 13, t1: 13, text: 'j' },
+  ], 13.5);
+  assert.deepEqual(fixed.slice(0, 5).map((w) => [w.t0, w.t1]), [[7, 7.4], [7.8, 8], [8, 8.2], [8.2, 8.4], [8.4, 8.9]]);
+  // A lone zero-length word before a long pause is capped at 0.6 s.
+  assert.deepEqual([fixed[5].t0, fixed[5].t1], [8.9, 9.5]);
+  assert.deepEqual(fixWordTimings([{ t0: 2, t1: 30, text: 'last' }], 3.1), [{ t0: 2, t1: 3.1, text: 'last' }]);
+  // A run at the very end stays inside the audio.
+  assert.deepEqual(fixed.slice(8).map((w) => [w.t0, w.t1]), [[13, 13.25], [13.25, 13.5]]);
+  for (let i = 0; i < fixed.length; i++) {
+    assert.ok(fixed[i].t1 > fixed[i].t0, `word ${i} has a length`);
+    if (i) assert.ok(fixed[i].t0 >= fixed[i - 1].t1, `word ${i} starts after word ${i - 1} ends`);
+  }
+  assert.deepEqual(fixed.map((w) => w.text).join(''), 'abcdefghij');
+});
+
+test('transcribe with translate returns English words and the spoken language', async (t) => {
+  const health = (await (await fetch(`${base}/health`)).json()) as { whisper: boolean; tts: boolean; translate: boolean };
+  if (!health.whisper || !health.tts) return t.skip('needs whisper-cli with a model, and text to speech');
+  const spoken = await job('/tools/tts', { text: 'नमस्ते दोस्तों। आज मौसम बहुत अच्छा है और मैं बाज़ार जा रहा हूँ।', language: 'hi' });
+  assert.equal(spoken.status, 'done', spoken.error ?? '');
+  const check = (words: { t0: number; t1: number; text: string }[]) => {
+    assert.ok(words.length >= 4, `${words.length} words`);
+    words.forEach((w, i) => {
+      assert.ok(w.t1 > w.t0, `word ${i} has a length`);
+      if (i) assert.ok(w.t0 >= words[i - 1].t1, `word ${i} is in order`);
+      assert.ok(w.t1 <= spoken.result.media.duration + 0.05, `word ${i} ends inside the audio (${w.t1})`);
+    });
+  };
+  const plain = await job('/tools/transcribe', { mediaId: spoken.result.media.id, language: 'hi' });
+  assert.equal(plain.status, 'done', plain.error ?? '');
+  check(plain.result.words);
+  assert.equal(plain.result.language, 'hi');
+  const english = await job('/tools/transcribe', { mediaId: spoken.result.media.id, translate: true });
+  if (!health.translate) {
+    // Only a turbo model is installed, and those cannot translate: say so rather than return Hindi.
+    assert.equal(english.status, 'error');
+    assert.match(english.error!, /translation is not set up/);
+    return t.diagnostic('translation itself was not run: no non-turbo Whisper model is installed');
+  }
+  assert.equal(english.status, 'done', english.error ?? '');
+  check(english.result.words);
+  assert.equal(english.result.language, 'hi');
+  const text = english.result.words.map((w: { text: string }) => w.text).join(' ');
+  console.log(`  hindi:   ${plain.result.words.map((w: { text: string }) => w.text).join(' ')}`);
+  console.log(`  english: ${text}`);
+  assert.ok(!/[\u0900-\u097F]/.test(text), 'translated words are not in Devanagari');
+  assert.match(text, /[A-Za-z]{3}/);
 });

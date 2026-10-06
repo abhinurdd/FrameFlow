@@ -308,7 +308,13 @@ export default function Editor() {
 
   function deleteSelected() {
     if (selection && selection.track !== 'main') apply(removeItem(edit!, selection.track, selection.id));
-    else if (target) apply(removeSegment(edit!, target.id));
+    else if (target) {
+      // Text, captions and audio after the clip slide left with the rest of the video.
+      const from = starts[edit!.main.indexOf(target)];
+      const removed = removeSegment(edit!, target.id);
+      const shifted = rippleCut({ ...edit!, main: [] }, [{ start: from, end: from + segmentDuration(target) }], () => uid('seg'));
+      apply({ ...shifted, main: removed.main });
+    }
     setSelection(null);
     setPanel(null);
   }
@@ -767,7 +773,8 @@ export default function Editor() {
 
         {/* Tools */}
         <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: 10 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 6 }}>
+          {/* Keyed by context so each toolbar starts scrolled to its first tool. */}
+          <ScrollView key={selection?.track ?? 'root'} horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 6 }}>
             {toolbar.map((t) => (
               <Tool key={t.label} {...t} />
             ))}

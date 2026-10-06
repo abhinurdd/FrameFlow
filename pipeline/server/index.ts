@@ -132,7 +132,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return;
   }
   if (method === 'GET' && url.pathname === '/health') {
-    return json(res, 200, { ok: true, whisper: tools.whisperSetup().ready, tts: tools.ttsSetup().ready, ...(missingFonts.size ? { missingFonts: [...missingFonts] } : {}) });
+    return json(res, 200, { ok: true, whisper: tools.whisperSetup().ready, translate: tools.whisperSetup().translateReady, tts: tools.ttsSetup().ready, ...(missingFonts.size ? { missingFonts: [...missingFonts] } : {}) });
   }
 
   if (parts[0] === 'media') {

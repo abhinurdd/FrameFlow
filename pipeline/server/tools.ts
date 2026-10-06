@@ -3,7 +3,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { readFile, stat, writeFile } from 'node:fs/promises';
-import { delimiter, extname, join } from 'node:path';
+import { basename, delimiter, extname, join } from 'node:path';
 
 import { FFMPEG, ffmpeg, run, sec } from './ff.ts';
 import type { JobContext, JobOutput } from './jobs.ts';
@@ -100,16 +100,18 @@ export async function stabilize(media: Media, ctx: JobContext): Promise<JobOutpu
   const out = join(ctx.tmp, 'stabilized.mp4');
   const audio = media.hasAudio ? ['-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k'] : [];
   const encode = ['-map', '0:v:0', ...audio, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out];
+  // The output keeps the source's size (made even for H.264).
+  const size = `scale=${Math.ceil(media.width / 2) * 2}:${Math.ceil(media.height / 2) * 2}`;
   let method = 'deshake';
   if ((await hasFilter('vidstabdetect')) && (await hasFilter('vidstabtransform'))) {
     method = 'vidstab';
     // The filter option parser needs a path without quotes or colons, so run inside the scratch directory.
     const trf = 'motion.trf';
     await ffmpeg(['-v', 'error', '-i', src, '-map', '0:v:0', '-vf', `vidstabdetect=shakiness=6:accuracy=12:result=${trf}`, '-f', 'null', '-'], { duration: media.duration, onProgress: (p) => ctx.progress(p * 0.45), cwd: ctx.tmp });
-    await ffmpeg(['-v', 'error', '-i', src, '-vf', `vidstabtransform=input=${trf}:smoothing=20:zoom=4,unsharp=5:5:0.6:3:3:0.3`, ...encode], { duration: media.duration, onProgress: (p) => ctx.progress(0.45 + p * 0.55), cwd: ctx.tmp });
+    await ffmpeg(['-v', 'error', '-i', src, '-vf', `vidstabtransform=input=${trf}:smoothing=20:zoom=4,unsharp=5:5:0.6:3:3:0.3,${size}`, ...encode], { duration: media.duration, onProgress: (p) => ctx.progress(0.45 + p * 0.55), cwd: ctx.tmp });
   } else {
     // A wide search and a slight zoom to hide the moving edges.
-    await ffmpeg(['-v', 'error', '-i', src, '-vf', 'deshake=rx=32:ry=32:edge=mirror,scale=iw*1.04:-2,crop=iw/1.04:ih/1.04,scale=trunc(iw/2)*2:trunc(ih/2)*2', ...encode], { duration: media.duration, onProgress: ctx.progress });
+    await ffmpeg(['-v', 'error', '-i', src, '-vf', `deshake=rx=32:ry=32:edge=mirror,crop=iw/1.04:ih/1.04,${size}`, ...encode], { duration: media.duration, onProgress: ctx.progress });
   }
   const done = await asMedia(out, `${stem(media)}-stabilized.mp4`);
   return { ...done, result: { ...done.result, method } };
@@ -126,7 +128,7 @@ export const VOICE_EFFECTS = {
   // A fixed frequency shift makes the voice inharmonic; a fast tremolo and a short metallic echo do the rest.
   robot: 'aresample=48000,afreqshift=shift=-120,tremolo=f=70:d=0.8,aecho=0.8:0.85:9|17:0.5|0.35,volume=1.3',
   echo: 'aecho=0.8:0.9:260|520:0.45|0.25',
-  telephone: 'highpass=f=400,lowpass=f=3000,acompressor=threshold=-22dB:ratio=6:makeup=4,volume=1.2',
+  telephone: 'highpass=f=400,highpass=f=400,lowpass=f=3000,lowpass=f=3000,acompressor=threshold=-22dB:ratio=6,volume=1.6',
 } as const;
 export type VoiceEffect = keyof typeof VOICE_EFFECTS;
 
@@ -168,7 +170,7 @@ function installedVoices(say: string) {
 export async function tts(text: string, language: 'hi' | 'en' | undefined, ctx: JobContext): Promise<JobOutput> {
   const setup = ttsSetup();
   if (!setup.ready) throw new Error('text to speech is not set up: it needs `say` (macOS) or `espeak-ng` on PATH.');
-  const hindi = language === 'hi' || (language !== 'en' && /[\u0900-\u097F]/.test(text)) || (language === undefined && /[\u0900-\u097F]/.test(text));
+  const hindi = language === 'hi' || /[\u0900-\u097F]/.test(text);
   const textFile = join(ctx.tmp, 'speech.txt');
   await writeFile(textFile, text);
   let raw: string;
@@ -347,7 +349,17 @@ export function whisperSetup() {
     const first = readdirSync(MODELS_DIR).filter((f) => f.endsWith('.bin')).sort()[0];
     model = first ? join(MODELS_DIR, first) : null;
   }
-  return { binary, model, ready: !!binary && !!model };
+  // The "turbo" Whisper models were not trained to translate: with `-tr` they still write the spoken language.
+  const canTranslate = (file: string) => !/turbo/i.test(basename(file));
+  let translateModel: string | null = null;
+  const wanted = process.env.WHISPER_TRANSLATE_MODEL;
+  if (wanted) translateModel = existsSync(wanted) ? wanted : null;
+  else if (model && canTranslate(model)) translateModel = model;
+  else if (existsSync(MODELS_DIR)) {
+    const other = readdirSync(MODELS_DIR).filter((f) => f.endsWith('.bin') && canTranslate(f)).sort()[0];
+    translateModel = other ? join(MODELS_DIR, other) : null;
+  }
+  return { binary, model, translateModel, ready: !!binary && !!model, translateReady: !!binary && !!translateModel };
 }
 
 type WhisperJson = { result?: { language?: string }; transcription?: { offsets?: { from: number; to: number }; text?: string }[] };
@@ -382,6 +394,11 @@ const MAX_GUESSED_WORD = 0.6;
  */
 export function fixWordTimings(input: { t0: number; t1: number; text: string }[], duration = Infinity) {
   const words = input.map((w) => ({ ...w }));
+  // Whisper can end the last word at the end of its 30 s window, past the end of the audio.
+  for (const w of words) {
+    w.t0 = Math.min(w.t0, duration);
+    w.t1 = Math.min(w.t1, duration);
+  }
   for (let i = 1; i < words.length; i++) words[i].t0 = Math.max(words[i].t0, words[i - 1].t0);
   const empty = (w: { t0: number; t1: number }) => w.t1 - w.t0 < 0.01;
   for (let i = 0; i < words.length; i++) {
@@ -416,6 +433,10 @@ export async function transcribe(media: Media, language: string | undefined, tra
     const missing = !setup.binary ? '`whisper-cli` is not on PATH' : 'no model file was found at $WHISPER_MODEL or pipeline/work/models/*.bin';
     throw new Error(`transcription is not set up: ${missing}. See "Transcription" in pipeline/README.md.`);
   }
+  const model = translate ? setup.translateModel : setup.model;
+  if (!model) {
+    throw new Error('translation is not set up: the installed Whisper model is a "turbo" one, which cannot translate. Add a non-turbo model (for example ggml-medium.bin or ggml-large-v3.bin) to pipeline/work/models, or point $WHISPER_TRANSLATE_MODEL at one.');
+  }
   needs(media, 'audio');
   const wav = join(ctx.tmp, 'speech.wav');
   await ffmpeg(['-v', 'error', '-i', mediaPath(media), '-map', '0:a:0', '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav]);
@@ -424,7 +445,7 @@ export async function transcribe(media: Media, language: string | undefined, tra
   const lang = language && /^[a-z]{2,3}$/i.test(language) ? language.toLowerCase() : 'auto';
   // One word per segment (`-ml 1 -sow`), written as JSON next to the audio; progress is printed to stderr.
   // `-tr` has whisper write English whatever was spoken; the language it reports is still the spoken one.
-  const args = ['-m', setup.model, '-f', wav, '-l', lang, '-ml', '1', '-sow', '-oj', '-of', prefix, '-pp', ...(translate ? ['-tr'] : [])];
+  const args = ['-m', model, '-f', wav, '-l', lang, '-ml', '1', '-sow', '-oj', '-of', prefix, '-pp', ...(translate ? ['-tr'] : [])];
   await new Promise<void>((resolve, reject) => {
     const child = spawn(setup.binary!, args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
