@@ -157,3 +157,7 @@ The user decided on 2026-10-06 that FrameFlow is a full AI video editor with VN'
 - 2026-10-06: **Auto captions** use whisper.cpp (`large-v3-turbo`, quantised) on the media server. It works for Hindi with word timings but writes English loan words in Devanagari, so it is a stopgap until the ASR bakeoff picks a provider.
 - 2026-10-06: Speed ramps are stepped (a clip is cut into parts at different speeds) so preview and export stay identical. Smooth custom curves wait for E5.
 - 2026-10-06: Sign in with Apple added in code (native, iOS only). It needs the bundle ID registered with Apple and enabled in Supabase before it works outside demo mode.
+- 2026-10-06: The user deferred AWS, the database and other backend hook-ups until the UI/UX is settled. Work until then is on the app's screens; the media server keeps running locally for export and AI tools.
+- 2026-10-06: **Editor layout rules.** The canvas never moves: the timeline has a fixed height and a tool's options open as a sheet over the timeline. Touch targets are at least 44pt, every control has a pressed state and a screen-reader label, and colours come from theme tokens. Options that cannot be previewed (blur background) or are not set up on the server (English captions) are hidden rather than shown broken.
+- 2026-10-06: **Linkage.** When the main track changes shape (speed, trim, reorder, transition), text, captions, overlays and effects stay over the same moment of the same clip (`relink` in `src/engine/timeline.ts`). Background music stays put.
+

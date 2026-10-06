@@ -6,7 +6,7 @@ import { Pressable, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { clipDuration, type Clip, type ClipStatus, type Script } from '@/engine/types';
 import { useProjects } from '@/state/projects';
@@ -53,6 +53,8 @@ export default function Review() {
   const [script, setScript] = useState<Script | null>(null);
   const clip = queue[index];
   const { width } = useWindowDimensions();
+  // Read from the root provider: a SafeAreaView inside this full-screen modal reports no insets.
+  const insets = useSafeAreaInsets();
   const x = useSharedValue(0);
   const { line, active } = useCaptionPlayback(clip);
 
@@ -113,10 +115,10 @@ export default function Review() {
         </Animated.View>
       </GestureDetector>
 
-      <SafeAreaView style={{ flex: 1 }} pointerEvents="box-none">
+      <View style={{ flex: 1, paddingTop: insets.top + 6, paddingBottom: insets.bottom + 4 }} pointerEvents="box-none">
         <View pointerEvents="box-none" style={{ paddingHorizontal: 16 }}>
           <Row style={{ justifyContent: 'space-between' }}>
-            <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Close">
+            <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close review" style={{ width: 44, height: 44, justifyContent: 'center' }}>
               <Ionicons name="close" size={26} color="#fff" />
             </Pressable>
             <T style={{ fontFamily: fonts.bold }}>
@@ -124,16 +126,18 @@ export default function Review() {
             </T>
             <Pressable
               onPress={() => setScript(shownScript === 'roman' ? 'devanagari' : shownScript === 'devanagari' ? 'bilingual' : 'roman')}
-              style={{ paddingHorizontal: 10, height: 30, borderRadius: 99, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,.45)' }}>
-              <T style={{ fontSize: 12, fontFamily: fonts.semibold }}>
-                {shownScript === 'roman' ? 'Roman' : shownScript === 'devanagari' ? 'देवनागरी' : 'Both'} ⇄
-              </T>
+              accessibilityRole="button"
+              accessibilityLabel="Switch caption script"
+              hitSlop={8}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 36, borderRadius: 99, backgroundColor: 'rgba(0,0,0,.5)' }}>
+              <T style={{ fontSize: 13, fontFamily: fonts.semibold }}>{shownScript === 'roman' ? 'Roman' : shownScript === 'devanagari' ? 'देवनागरी' : 'Both'}</T>
+              <Ionicons name="swap-horizontal" size={14} color="#fff" />
             </Pressable>
           </Row>
           <View style={{ height: 3, borderRadius: 3, backgroundColor: 'rgba(255,255,255,.2)', marginTop: 10 }}>
             <View style={{ width: `${((index + 1) / queue.length) * 100}%`, height: 3, borderRadius: 3, backgroundColor: '#fff' }} />
           </View>
-          <View style={{ position: 'absolute', right: 16, top: 56, alignItems: 'center', gap: 6 }}>
+          <View style={{ position: 'absolute', right: 16, top: 70, alignItems: 'center', gap: 6 }}>
             <T style={{ fontFamily: fonts.black, fontSize: 28, color: clip.score >= 85 ? colors.score : colors.amber }}>{clip.score}</T>
             <Grade label="Hook" value={clip.grades.hook} />
             <Grade label="Flow" value={clip.grades.flow} />
@@ -152,27 +156,27 @@ export default function Review() {
         </View>
 
         <Row style={{ justifyContent: 'space-around', marginTop: 18, marginBottom: 6 }}>
-          <Pressable onPress={() => fling('discarded')} accessibilityLabel="Discard" style={{ alignItems: 'center', gap: 4 }}>
+          <Pressable onPress={() => fling('discarded')} accessibilityRole="button" accessibilityLabel="Discard clip" style={{ alignItems: 'center', gap: 4 }}>
             <View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="close" size={28} color={colors.danger} />
             </View>
             <T variant="tiny">Discard</T>
           </Pressable>
-          <Pressable onPress={() => router.push(`/clip/${clip.id}`)} accessibilityLabel="Edit" style={{ alignItems: 'center', gap: 4 }}>
+          <Pressable onPress={() => router.push(`/clip/${clip.id}`)} accessibilityRole="button" accessibilityLabel="Edit clip" style={{ alignItems: 'center', gap: 4 }}>
             <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: colors.surface2, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="create-outline" size={20} color="#fff" />
             </View>
             <T variant="tiny">Edit</T>
           </Pressable>
-          <Pressable onPress={() => fling('kept')} accessibilityLabel="Keep" style={{ alignItems: 'center', gap: 4 }}>
+          <Pressable onPress={() => fling('kept')} accessibilityRole="button" accessibilityLabel="Keep clip" style={{ alignItems: 'center', gap: 4 }}>
             <GradientFill style={{ width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="checkmark" size={30} color="#fff" />
             </GradientFill>
             <T variant="tiny">Keep</T>
           </Pressable>
         </Row>
-        <T variant="tiny" style={{ textAlign: 'center', marginBottom: 6 }}>← swipe to discard · swipe to keep →</T>
-      </SafeAreaView>
+        <T variant="tiny" style={{ textAlign: 'center', marginBottom: 6 }}>Swipe left to discard, right to keep</T>
+      </View>
     </View>
   );
 }

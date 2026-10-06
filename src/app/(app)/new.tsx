@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { pickMedia } from '@/editor/pick';
 import { duration, type Genre, type ProjectSettings, type Script, type SpokenLanguage } from '@/engine/types';
 import { usePrefs } from '@/state/prefs';
 import { useProjects } from '@/state/projects';
@@ -21,12 +22,12 @@ const LANGS: { id: SpokenLanguage; label: string }[] = [
   { id: 'auto', label: 'Auto' },
 ];
 const GENRES: { id: Genre; label: string }[] = [
-  { id: 'podcast', label: '🎙 Podcast' },
-  { id: 'motivation', label: '🔥 Motivation' },
-  { id: 'spiritual', label: '🙏 Spiritual' },
-  { id: 'education', label: '📚 Education' },
-  { id: 'finance', label: '📈 Finance' },
-  { id: 'comedy', label: '😂 Comedy' },
+  { id: 'podcast', label: 'Podcast' },
+  { id: 'motivation', label: 'Motivation' },
+  { id: 'spiritual', label: 'Spiritual' },
+  { id: 'education', label: 'Education' },
+  { id: 'finance', label: 'Finance' },
+  { id: 'comedy', label: 'Comedy' },
 ];
 
 export default function NewProject() {
@@ -38,15 +39,29 @@ export default function NewProject() {
   const [url, setUrl] = useState(params.url ?? '');
   const [s, setS] = useState<ProjectSettings>(defaults);
   const [saveDefault, setSaveDefault] = useState(false);
+  const [picked, setPicked] = useState<{ title: string; durationSec: number; uri: string } | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [touched, setTouched] = useState(false);
   const set = <K extends keyof ProjectSettings>(k: K, v: ProjectSettings[K]) => setS((prev) => ({ ...prev, [k]: v }));
 
   const videoId = url.match(YT_RE)?.[1];
   // Until the backend resolves link metadata, use representative values.
-  const source = useMemo(
+  const linked = useMemo(
     () => (videoId ? { title: `Desi Hustle Podcast · Ep ${42 + projectCount}`, durationSec: 4360 } : null),
     [videoId, projectCount],
   );
-  const expected = source ? Math.round(source.durationSec / 60 / 2.9) : 0;
+  const source = picked ?? linked;
+
+  async function chooseVideo() {
+    setPicking(true);
+    try {
+      const [video] = await pickMedia(['videos'], false);
+      if (video) setPicked({ title: video.name?.replace(/\.[^.]+$/, '') ?? 'My video', durationSec: Math.round(video.duration), uri: video.uri });
+    } finally {
+      setPicking(false);
+    }
+  }
+  const expected = source ? Math.max(1, Math.round(source.durationSec / 60 / 2.9)) : 0;
 
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
@@ -62,7 +77,7 @@ export default function NewProject() {
             <ClipFrame tone={0} personSize={60} style={{ width: 100, height: 60 }} />
             <View style={{ flex: 1 }}>
               <T style={{ fontFamily: fonts.bold }} numberOfLines={2}>{source.title}</T>
-              <T variant="tiny" style={{ marginTop: 2 }}>YouTube · {duration(source.durationSec)} · 2 speakers</T>
+              <T variant="tiny" style={{ marginTop: 2 }}>{picked ? 'From your gallery' : 'YouTube'} · {duration(source.durationSec)}</T>
             </View>
           </Row>
         ) : (
@@ -71,7 +86,11 @@ export default function NewProject() {
               <Ionicons name="link" size={18} color={colors.textMuted} />
               <TextInput
                 value={url}
-                onChangeText={setUrl}
+                onChangeText={(v) => {
+                  setUrl(v);
+                  setTouched(false);
+                }}
+                onBlur={() => setTouched(true)}
                 autoFocus={!params.url}
                 placeholder="Paste a YouTube link"
                 placeholderTextColor={colors.textDim}
@@ -81,15 +100,21 @@ export default function NewProject() {
                 style={{ flex: 1, height: 40, color: colors.text, fontFamily: fonts.medium, fontSize: 14 }}
               />
             </Panel>
-            {url.length > 0 && <T style={{ color: colors.danger, fontSize: 12, marginTop: 6 }}>That doesn&apos;t look like a YouTube link.</T>}
-            <T variant="tiny" style={{ marginTop: 8 }}>Uploading from your gallery is coming in the next build.</T>
+            {/* Only complain once the field has been left, not while a link is being typed. */}
+            {touched && url.trim().length > 0 && <T style={{ color: colors.danger, fontSize: 12.5, marginTop: 6 }}>That doesn&apos;t look like a YouTube link.</T>}
+            <Row style={{ marginVertical: 12 }}>
+              <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
+              <T variant="tiny">or</T>
+              <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />
+            </Row>
+            <Button title="Choose from gallery" variant="secondary" loading={picking} icon={<Ionicons name="images-outline" size={18} color={colors.text} />} onPress={chooseVideo} />
           </>
         )}
 
         <Label>Spoken language</Label>
         <Row style={{ flexWrap: 'wrap' }}>
           {LANGS.map((l) => (
-            <Chip key={l.id} label={(s.language === l.id ? '✓ ' : '') + l.label} selected={s.language === l.id} onPress={() => set('language', l.id)} />
+            <Chip key={l.id} label={l.label} selected={s.language === l.id} onPress={() => set('language', l.id)} />
           ))}
         </Row>
 
@@ -162,12 +187,13 @@ export default function NewProject() {
           </Panel>
         )}
         <Button
-          title="✨  Get clips"
+          title="Get clips"
+          icon={<Ionicons name="sparkles" size={18} color={colors.text} />}
           disabled={!source}
           onPress={() => {
             if (!source) return;
             if (saveDefault) setDefaults(s);
-            const id = createProject({ url, title: source.title, durationSec: source.durationSec }, s);
+            const id = createProject({ url: picked?.uri ?? url, title: source.title, durationSec: source.durationSec }, s);
             router.dismiss();
             router.push(`/project/${id}`);
           }}

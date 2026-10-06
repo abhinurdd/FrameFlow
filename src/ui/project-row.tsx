@@ -11,7 +11,8 @@ import { colors } from './theme';
 const LANG_LABEL = { hinglish: 'Hinglish', hindi: 'हिन्दी', english: 'English', auto: 'Auto' } as const;
 
 export function ProjectRow({ project }: { project: Project }) {
-  const clips = useProjects((s) => s.clips.filter((c) => c.projectId === project.id));
+  // Select the stable array and filter here: a selector that builds a new array re-renders forever.
+  const clips = useProjects((s) => s.clips).filter((c) => c.projectId === project.id);
   const kept = clips.filter((c) => c.status === 'kept' || c.status === 'exported').length;
   const processing = project.status === 'processing';
   return (
@@ -34,7 +35,7 @@ export function ProjectRow({ project }: { project: Project }) {
             </>
           ) : (
             <T variant="tiny" style={{ marginTop: 6, color: colors.score }}>
-              ✓ {clips.length} clips · {kept} kept
+              {clips.length} clips · {kept} kept
             </T>
           )}
         </View>

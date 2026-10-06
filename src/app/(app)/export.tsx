@@ -20,15 +20,15 @@ const TARGETS = [
 
 export default function Export() {
   const { projectId, clipId } = useLocalSearchParams<{ projectId?: string; clipId?: string }>();
-  const clips = useProjects((s) =>
-    s.clips.filter((c) => (clipId ? c.id === clipId : c.projectId === projectId && c.status === 'kept')),
-  );
+  // Filter outside the selector: a selector that builds a new array re-renders forever.
+  const clips = useProjects((s) => s.clips).filter((c) => (clipId ? c.id === clipId : c.projectId === projectId && c.status === 'kept'));
   const setClipStatus = useProjects((s) => s.setClipStatus);
   const balance = usePrefs((s) => s.clipBalance);
   const spendClips = usePrefs((s) => s.spendClips);
   const [quality, setQuality] = useState<'1080p' | '4k'>('1080p');
   const [targets, setTargets] = useState<Record<string, boolean>>({ reels: true, shorts: true, whatsapp: false, gallery: true });
   const [done, setDone] = useState(false);
+  const [variant, setVariant] = useState(0);
 
   const count = clips.filter((c) => c.status !== 'exported').length;
   const seconds = clips.reduce((n, c) => n + clipDuration(c.spec), 0);
@@ -86,11 +86,19 @@ export default function Export() {
           <>
             <Label>Caption for Reels (AI · Hinglish)</Label>
             <Panel>
-              <T style={{ fontSize: 13.5, color: '#DADAE4', lineHeight: 20 }}>
-                {first.title} 💸 Pura episode profile link mein. #{first.tags[0]} #{first.tags[1] ?? 'india'} #hinglish #podcastclips
+              <T style={{ fontSize: 13.5, color: colors.textSecondary, lineHeight: 20 }}>
+                {[`${first.title} 💸 Pura episode profile link mein.`, `Ye baat koi nahi batata: ${first.title}. Full episode link in bio.`, `${first.title}. Agree ya disagree? Comment karo 👇`][variant % 3]} #{first.tags[0]} #{first.tags[1] ?? 'india'} #hinglish #podcastclips
               </T>
               <Row style={{ justifyContent: 'space-between', marginTop: 10 }}>
-                <Chip label="✨ Rewrite" />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Rewrite caption"
+                  hitSlop={6}
+                  onPress={() => setVariant(variant + 1)}
+                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 36, borderRadius: 99, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.line, opacity: pressed ? 0.7 : 1 })}>
+                  <Ionicons name="sparkles" size={14} color={colors.saffronText} />
+                  <T style={{ fontFamily: fonts.semibold, fontSize: 13 }}>Rewrite</T>
+                </Pressable>
                 <T variant="tiny">AI captions per platform</T>
               </Row>
             </Panel>
