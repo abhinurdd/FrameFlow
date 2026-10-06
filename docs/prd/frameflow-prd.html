@@ -1,0 +1,1227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FrameFlow — Product, Design & Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=block" rel="stylesheet">
+<style>
+:root{
+  --ink:#14141A; --ink2:#4A4A57; --ink3:#8A8A98; --line:#E6E6EC; --paper:#FFFFFF; --soft:#F6F6F9;
+  --saffron:#FF7A1A; --magenta:#FF2E7E; --violet:#7B5CFF; --green:#22C55E; --amber:#F59E0B; --red:#EF4444;
+  --grad:linear-gradient(120deg,var(--saffron),var(--magenta));
+  --app:#0A0A0E; --app2:#15151C; --app3:#1F1F29; --appline:#2A2A36; --apptext:#F3F3F7; --appmute:#9A9AAB;
+  --score:#3DDC84;
+}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:A4;margin:16mm 15mm 18mm 15mm;
+  @bottom-left{content:"FrameFlow · Product, Design & Architecture · v0.1";font:500 8pt Inter,sans-serif;color:#8A8A98}
+  @bottom-right{content:counter(page);font:600 8pt Inter,sans-serif;color:#8A8A98}}
+@page cover{margin:0; @bottom-left{content:none} @bottom-right{content:none}}
+html,body{margin:0;background:var(--paper);color:var(--ink);font:400 10pt/1.5 Inter,"Noto Sans Devanagari",sans-serif}
+.deva{font-family:"Noto Sans Devanagari",Inter,sans-serif}
+h1,h2,h3,h4{margin:0;line-height:1.2;letter-spacing:-.01em}
+h1{font-size:26pt;font-weight:800;letter-spacing:-.02em}
+h2{font-size:15pt;font-weight:800;margin:18px 0 8px}
+h3{font-size:11.5pt;font-weight:700;margin:14px 0 6px}
+h4{font-size:10pt;font-weight:700;margin:10px 0 4px}
+p{margin:0 0 8px}
+ul,ol{margin:0 0 8px;padding-left:18px} li{margin:2px 0}
+code,.mono{font-family:"JetBrains Mono","Noto Sans Devanagari",monospace;font-size:8.5pt}
+.break{break-before:page}
+.avoid{break-inside:avoid}
+.muted{color:var(--ink2)} .small{font-size:8.5pt} .tiny{font-size:7.5pt}
+.kicker{font-size:8pt;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--saffron);margin-bottom:6px}
+.part{display:flex;align-items:baseline;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:14px}
+.part .num{font-size:30pt;font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+table{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:8.6pt}
+th{text-align:left;font-weight:700;background:var(--soft);border-bottom:1px solid var(--line);padding:6px 7px;vertical-align:top}
+td{border-bottom:1px solid var(--line);padding:5px 7px;vertical-align:top}
+tr{break-inside:avoid}
+.pill{display:inline-block;font-size:7pt;font-weight:800;padding:1px 6px;border-radius:99px;letter-spacing:.03em}
+.p0{background:#FFE7D6;color:#B4480A} .p1{background:#EEE8FF;color:#5B3FD6} .p2{background:#EAEAF0;color:#555}
+.callout{border-left:3px solid var(--saffron);background:#FFF6EF;padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0 12px}
+.callout.v{border-color:var(--violet);background:#F4F1FF}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;break-inside:avoid}
+.card h4{margin-top:0}
+.stat{font-size:18pt;font-weight:800;letter-spacing:-.02em}
+pre{background:#0F0F14;color:#E8E8F0;border-radius:10px;padding:12px 14px;font:400 7.6pt/1.45 "JetBrains Mono","Noto Sans Devanagari",monospace;white-space:pre-wrap;margin:6px 0 12px;break-inside:avoid}
+pre .k{color:#FF9D5C} pre .s{color:#9BE3B0} pre .c{color:#7C7C90}
+
+/* ---------- cover ---------- */
+.cover{page:cover;height:297mm;width:210mm;background:#0A0A0E;color:#fff;position:relative;overflow:hidden;padding:24mm 20mm}
+.cover .glow{position:absolute;width:520px;height:520px;border-radius:50%;filter:blur(60px);opacity:.55}
+.cover .g1{background:var(--saffron);top:-160px;right:-140px}
+.cover .g2{background:var(--magenta);bottom:-200px;left:-160px;opacity:.4}
+.cover .brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:16pt;position:relative}
+.cover h1{font-size:44pt;line-height:1.02;margin-top:58mm;position:relative;letter-spacing:-.03em}
+.cover h1 span{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cover .sub{font-size:13pt;color:#C9C9D6;margin-top:14px;max-width:150mm;position:relative}
+.cover .meta{position:absolute;bottom:22mm;left:20mm;right:20mm;display:flex;justify-content:space-between;font-size:9pt;color:#9A9AAB;border-top:1px solid #2A2A36;padding-top:10px}
+.cover .phones{position:absolute;right:-30mm;top:150mm;display:flex;gap:16px;transform:rotate(-8deg)}
+
+/* ---------- phone mock ---------- */
+.phone{width:286px;height:612px;border-radius:44px;background:var(--app);border:9px solid #1B1B21;box-shadow:0 0 0 1px #2c2c35,0 18px 40px rgba(20,20,30,.25);position:relative;overflow:hidden;color:var(--apptext);font-size:11px;line-height:1.35;flex:none}
+.island{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:84px;height:24px;background:#000;border-radius:14px;z-index:5}
+.status{height:38px;display:flex;justify-content:space-between;align-items:center;padding:4px 22px 0;font-size:10.5px;font-weight:700}
+.status .r{display:flex;gap:4px;align-items:center}
+.scr{padding:4px 13px 0;position:relative}
+.row{display:flex;align-items:center} .sb{justify-content:space-between} .g6{gap:6px} .g8{gap:8px} .g4{gap:4px}
+.t-title{font-size:17px;font-weight:800;letter-spacing:-.01em}
+.t-h{font-size:12.5px;font-weight:700}
+.t-m{color:var(--appmute);font-size:10px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:5px 9px;border-radius:99px;background:var(--app3);border:1px solid var(--appline);font-size:10px;font-weight:600;color:#DADAE4;white-space:nowrap}
+.chip.on{background:rgba(255,122,26,.16);border-color:var(--saffron);color:#FFB27A}
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;height:42px;border-radius:14px;font-weight:800;font-size:12.5px}
+.btn.pri{background:var(--grad);color:#fff}
+.btn.sec{background:var(--app3);border:1px solid var(--appline);color:#E9E9F1}
+.panel{background:var(--app2);border:1px solid var(--appline);border-radius:14px;padding:10px}
+.lbl{font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--appmute);margin:10px 0 5px}
+.seg{display:flex;background:var(--app3);border-radius:10px;padding:3px;gap:3px}
+.seg div{flex:1;text-align:center;padding:5px 0;border-radius:8px;font-size:10px;font-weight:700;color:var(--appmute)}
+.seg div.on{background:#F3F3F7;color:#111}
+.tog{width:30px;height:18px;border-radius:99px;background:var(--saffron);position:relative;flex:none}
+.tog:after{content:"";position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+.tog.off{background:#3A3A48}.tog.off:after{right:auto;left:2px}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:62px;background:rgba(14,14,19,.96);border-top:1px solid var(--appline);display:flex;justify-content:space-around;align-items:flex-start;padding-top:9px;font-size:8.5px;color:var(--appmute);font-weight:600}
+.tabbar div{display:flex;flex-direction:column;align-items:center;gap:3px}
+.tabbar .on{color:#fff}
+.tabbar .plus{width:40px;height:30px;border-radius:11px;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:800;margin-top:-2px}
+.homebar{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);width:100px;height:4px;border-radius:9px;background:#fff;opacity:.85;z-index:6}
+.thumb{position:relative;border-radius:12px;overflow:hidden;background:linear-gradient(165deg,#3B2B63 0%,#1A1726 60%,#0E0E14 100%)}
+.thumb.b{background:linear-gradient(165deg,#5A2A2A 0%,#24161A 60%,#0E0E14 100%)}
+.thumb.c{background:linear-gradient(165deg,#1E4A52 0%,#141F24 60%,#0E0E14 100%)}
+.thumb.d{background:linear-gradient(165deg,#5A4520 0%,#221C12 60%,#0E0E14 100%)}
+.thumb svg.person{position:absolute;bottom:0;left:50%;transform:translateX(-50%)}
+.score{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);border-radius:8px;padding:2px 6px;font-weight:900;font-size:12px;color:var(--score)}
+.score.a{color:#FFC547}
+.dur{position:absolute;bottom:6px;left:6px;background:rgba(0,0,0,.65);border-radius:6px;padding:1px 5px;font-size:9px;font-weight:700}
+.cap{position:absolute;left:8px;right:8px;text-align:center;font-weight:900;text-transform:none;line-height:1.1;text-shadow:0 2px 0 #000,0 0 6px rgba(0,0,0,.8)}
+.cap .hl{color:#FFD23F}
+.cap .hl2{background:var(--saffron);color:#fff;padding:0 4px;border-radius:4px;text-shadow:none}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#14141B;border-top-left-radius:22px;border-top-right-radius:22px;border-top:1px solid var(--appline);padding:8px 13px 22px}
+.grab{width:36px;height:4px;border-radius:9px;background:#3A3A48;margin:0 auto 8px}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.word{display:inline;padding:0 1px;border-radius:3px}
+.word.del{text-decoration:line-through;color:#6B6B7B}
+.word.fill{border-bottom:1.5px dashed var(--amber);color:#FFD08A}
+.word.sel{background:var(--saffron);color:#fff;padding:1px 3px}
+.word.emph{color:#FFD23F;font-weight:800}
+.spk{display:inline-flex;width:16px;height:16px;border-radius:50%;font-size:8.5px;font-weight:800;align-items:center;justify-content:center;margin-right:4px;vertical-align:1px}
+.spk.a{background:#2D6BFF}.spk.b{background:#B33DFF}
+.ring{width:54px;height:54px;border-radius:50%;background:conic-gradient(var(--saffron) 0 137deg,#2A2A36 137deg);display:flex;align-items:center;justify-content:center}
+.ring div{width:44px;height:44px;border-radius:50%;background:var(--app);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px}
+.shim{background:linear-gradient(110deg,#1B1B24 30%,#26263200 50%,#1B1B24 70%),#1B1B24;border:1px dashed #2E2E3C}
+.grade{display:inline-flex;flex-direction:column;align-items:center;background:rgba(0,0,0,.5);border-radius:9px;padding:4px 6px;font-size:8px;color:#BBB;font-weight:700;min-width:34px}
+.grade b{font-size:13px;color:#fff}
+.fab{position:absolute;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900}
+.toolrow{display:flex;justify-content:space-between;gap:4px}
+.tool{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:8.5px;color:#C9C9D6;font-weight:600;flex:1}
+.tool i{width:30px;height:30px;border-radius:10px;background:var(--app3);display:flex;align-items:center;justify-content:center;font-style:normal;font-size:13px;color:#fff}
+.tool.on i{background:rgba(255,122,26,.2);color:#FFB27A;outline:1px solid var(--saffron)}
+.tl{height:38px;border-radius:8px;background:repeating-linear-gradient(90deg,#2B2440 0 22px,#241E36 22px 44px);position:relative;border:2px solid #FFD23F}
+.tl:before,.tl:after{content:"";position:absolute;top:-2px;bottom:-2px;width:8px;background:#FFD23F}
+.tl:before{left:-6px;border-radius:4px 0 0 4px}.tl:after{right:-6px;border-radius:0 4px 4px 0}
+.ph{position:absolute;top:-6px;bottom:-6px;left:46%;width:2px;background:#fff}
+.platform{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:10px;color:#fff;flex:none}
+
+/* mock page layout */
+.mockrow{display:flex;gap:26px;justify-content:center;margin:6px 0 10px}
+.mockcol{display:flex;flex-direction:column;align-items:center;gap:8px;width:300px}
+.mocktitle{font-weight:800;font-size:10.5pt;align-self:flex-start}
+.mocktitle span{display:inline-flex;width:20px;height:20px;border-radius:6px;background:var(--grad);color:#fff;font-size:9pt;align-items:center;justify-content:center;margin-right:6px}
+.notes{font-size:8.4pt;line-height:1.45;color:var(--ink2);align-self:stretch}
+.notes ul{padding-left:14px;margin:0}
+.notes b{color:var(--ink)}
+.src{font-size:7.4pt;color:var(--ink3);margin-top:4px}
+
+/* diagrams */
+svg text{font-family:Inter,sans-serif}
+.tight table{font-size:8.2pt;margin-bottom:6px}.tight td,.tight th{padding:4px 7px}.tight h3{margin:9px 0 4px}.tight h2{margin:12px 0 6px}.tight .stat{font-size:15pt}.tight .card{padding:7px 10px}
+.toc a{color:inherit;text-decoration:none}
+.toc .row{display:flex;justify-content:space-between;border-bottom:1px dotted #CFCFD8;padding:6px 0;font-size:10pt}
+.toc .h{font-weight:800;margin-top:12px;border-bottom:none}
+</style>
+</head>
+<body>
+
+<!-- reusable svg symbols -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF7A1A"/><stop offset="1" stop-color="#FF2E7E"/></linearGradient>
+    <symbol id="logo" viewBox="0 0 40 40">
+      <rect width="40" height="40" rx="11" fill="url(#lg)"/>
+      <path d="M14 11.5 L29 20 L14 28.5 Z" fill="#fff"/>
+      <path d="M9 15 h4 M8 20 h5 M9 25 h4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity=".85"/>
+    </symbol>
+    <symbol id="person" viewBox="0 0 120 120">
+      <circle cx="60" cy="42" r="20" fill="#E9C2A6"/>
+      <path d="M52 26c4-8 22-8 26 2 2 6-2 8-2 8s-2-8-12-8-12 4-12 4-3-2 0-6z" fill="#1b1410"/>
+      <path d="M20 120c2-30 18-44 40-44s38 14 40 44z" fill="#2F3A56"/>
+      <rect x="54" y="62" width="12" height="16" fill="#E9C2A6"/>
+      <rect x="84" y="70" width="10" height="34" rx="5" fill="#111" transform="rotate(-18 89 87)"/>
+      <circle cx="96" cy="62" r="9" fill="#222" transform="rotate(-18 89 87)"/>
+    </symbol>
+    <symbol id="person2" viewBox="0 0 120 120">
+      <circle cx="60" cy="42" r="20" fill="#C99376"/>
+      <path d="M40 40c0-22 40-22 40 0 0 0-6-12-20-12s-20 12-20 12z" fill="#2a1a12"/>
+      <path d="M20 120c2-30 18-44 40-44s38 14 40 44z" fill="#6B2E3E"/>
+      <rect x="54" y="62" width="12" height="16" fill="#C99376"/>
+      <rect x="26" y="70" width="10" height="34" rx="5" fill="#111" transform="rotate(18 31 87)"/>
+      <circle cx="24" cy="62" r="9" fill="#222" transform="rotate(18 31 87)"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ======================= COVER ======================= -->
+<section class="cover">
+  <div class="glow g1"></div><div class="glow g2"></div>
+  <div class="brand"><svg width="38" height="38"><use href="#logo"/></svg>FrameFlow</div>
+  <div class="kicker" style="margin-top:50mm;position:relative;color:#FFB27A">Product · Design · Architecture — v0.1</div>
+  <h1 style="margin-top:4mm">Long videos in.<br><span>Viral desi shorts</span> out.</h1>
+  <p class="sub">The mobile-first AI clipping studio for Indian creators — Hinglish-native captions, clips in minutes, priced for Bharat.</p>
+  <div class="phones">
+    <div class="phone" style="transform:scale(.62);transform-origin:top left;margin-right:-110px">
+      <div class="island"></div>
+      <div class="thumb" style="position:absolute;inset:0;border-radius:0">
+        <svg class="person" width="300" height="300" style="bottom:0"><use href="#person2"/></svg>
+        <div class="cap deva" style="top:440px;font-size:30px">पैसा <span class="hl">बचाना</span> नहीं,<br>कमाना सीखो</div>
+      </div>
+    </div>
+    <div class="phone" style="transform:scale(.62);transform-origin:top left">
+      <div class="island"></div>
+      <div class="thumb b" style="position:absolute;inset:0;border-radius:0">
+        <svg class="person" width="300" height="300" style="bottom:0"><use href="#person"/></svg>
+        <div class="cap" style="top:440px;font-size:30px">Sabse badi <span class="hl2">galti</span><br>20s mein</div>
+      </div>
+    </div>
+  </div>
+  <div class="meta"><span>Prepared by Claude (Tech lead) for FrameFlow · abhinurdd/FrameFlow</span><span>5 October 2026 · Confidential draft</span></div>
+</section>
+
+<!-- ======================= TOC ======================= -->
+<section class="toc">
+  <div class="kicker">Contents</div>
+  <h1 style="margin-bottom:14px">What's inside</h1>
+  <div class="row h"><span>Part 1 — Product overview</span><span></span></div>
+  <div class="row"><span>1.1 The opportunity · 1.2 Vision &amp; north star · 1.3 Who we serve · 1.4 Positioning</span><span>3</span></div>
+  <div class="row h"><span>Part 2 — Design mocks</span><span></span></div>
+  <div class="row"><span>2.1 Core flow · 2.2 Design principles · 2.3 Screens 01–12</span><span>4</span></div>
+  <div class="row h"><span>Part 3 — Product requirements (PRD)</span><span></span></div>
+  <div class="row"><span>3.1 Goals &amp; non-goals · 3.2 Success metrics · 3.3 User stories · 3.4 Functional requirements</span><span>11</span></div>
+  <div class="row"><span>3.5 Non-functional requirements · 3.6 Pricing &amp; packaging · 3.7 Analytics · 3.8 Release plan · 3.9 Risks &amp; open questions</span><span>15</span></div>
+  <div class="row h"><span>Part 4 — Technical architecture</span><span></span></div>
+  <div class="row"><span>4.1 System overview · 4.2 Clip pipeline · 4.3 Clip Spec · 4.4 Mobile app · 4.5 Backend services</span><span>17</span></div>
+  <div class="row"><span>4.6 Data model · 4.7 API · 4.8 ML &amp; evaluation · 4.9 Infra, cost &amp; scale · 4.10 Security · 4.11 Decision log</span><span>21</span></div>
+  <div class="callout v" style="margin-top:22px"><b>How to read this.</b> Numbers marked <i>target</i> are goals to validate in Phase 0, not measurements. Competitor facts come from the teardown in <code>docs/research/competitive-teardown.md</code> (public sources, 5 Oct 2026). Mocks are high-fidelity concepts — final visual design will iterate with real content and user testing.</div>
+</section>
+
+<!-- ======================= PART 1 ======================= -->
+<section class="break tight" style="font-size:9pt">
+  <div class="part"><span class="num">01</span><h1>Product overview</h1></div>
+
+  <h2>1.1 The opportunity</h2>
+  <p style="margin-bottom:4px">India's creator economy runs on short video — Reels and YouTube Shorts — but the content that matters most is long-form: Hindi/Hinglish podcasts, talks, kathas, classes and debates. Turning one 60–120 minute episode into 20–50 shorts is today either manual editing (VN, InShot, CapCut-via-VPN) or Western tools that don't understand Indian speech.</p>
+  <div class="grid3" style="margin:6px 0 8px">
+    <div class="card"><div class="stat">No Hindi</div><div class="small muted">OpusClip, the clipping leader, officially doesn't support Hindi or any Indic language; Android app has no editor (2.8★).</div></div>
+    <div class="card"><div class="stat">2–5 min</div><div class="small muted">Kalakar, the desi-caption specialist, caps videos at 2–5 minutes and doesn't clip. No iOS app.</div></div>
+    <div class="card"><div class="stat">₹969+/mo</div><div class="small muted">Captions (Mirage) has Indic clipping on mobile, but it's pricey, slow (up to ~1 hr) and its Android Lite app is 3.5★.</div></div>
+  </div>
+  <p>Platforms now give away <i>basic</i> captions and dubbing (Edits, Meta AI dubbing, YouTube Create). Value has moved to three places: <b>picking the right moments</b> for Indian audiences, <b>Indic caption craft</b>, and a <b>fast, cheap, reliable workflow</b> on the phones and networks Indian creators actually use.</p>
+
+  <h2>1.2 Vision &amp; north star</h2>
+  <div class="callout"><b style="font-size:11.5pt">Turn a Hindi/Hinglish podcast into 20 ready-to-post clips — from a phone, in minutes, for less than a chai a day.</b><div class="small muted" style="margin-top:3px"><b>North-star metric:</b> clips exported per week — captures selection quality, editor usability and willingness to pay in one number.</div></div>
+  
+
+  <h2>1.3 Who we serve (in order)</h2>
+  <table>
+    <tr><th style="width:22%">Persona</th><th>Job to be done</th><th style="width:30%">What wins them</th></tr>
+    <tr><td><b>The Clipper</b></td><td>Process many hours/week of podcasts into high-volume shorts across many accounts; paid per view (Whop and similar programmes).</td><td>Paste-a-link speed, batch, no watermark, cost per clip, multiple brands/accounts.</td></tr>
+    <tr><td><b>The Podcaster</b></td><td>Get 20–50 on-brand clips per episode without an editor (or make their editor 5× faster).</td><td>Great picks, speaker split layouts, accurate Hinglish captions, brand style.</td></tr>
+    <tr><td><b>The Editor</b></td><td>Deliver captioned shorts to clients fast with exact timing and style control.</td><td>Word-level caption control, presets, replace-source, SRT export.</td></tr>
+    <tr><td><b>Long-form creators</b></td><td>Repurpose long talks/classes/discourses into daily shorts.</td><td>Genre-aware picks (keep the punchline, the verse, the key concept), Devanagari captions.</td></tr>
+  </table>
+
+  <h2>1.4 Positioning</h2>
+  <table>
+    <tr><th style="width:18%"></th><th>OpusClip</th><th>Captions</th><th>Kalakar</th><th>VN</th><th style="background:#FFE7D6">FrameFlow</th></tr>
+    <tr><td><b>AI clipping</b></td><td>✓ (20–40 min)</td><td>✓ (up to ~1 hr)</td><td>✗</td><td>✗</td><td><b>✓ first clip &lt;5 min (target)</b></td></tr>
+    <tr><td><b>Hinglish / Indic</b></td><td>✗</td><td>✓</td><td>✓ (script locked)</td><td>Weak</td><td><b>✓ instant script toggle</b></td></tr>
+    <tr><td><b>Real mobile editor</b></td><td>iOS captions only; Android none</td><td>✓ (Lite on Android)</td><td>Web wrapper</td><td>✓ (manual)</td><td><b>✓ Android-first</b></td></tr>
+    <tr><td><b>Pricing model</b></td><td>Per source minute, credits expire</td><td>Credits, opaque</td><td>Hours + caps</td><td>Sub + credits</td><td><b>Per exported clip, cost shown first, UPI</b></td></tr>
+  </table>
+</section>
+
+<!-- ======================= PART 2 ======================= -->
+<section class="break">
+  <div class="part"><span class="num">02</span><h1>Design mocks</h1></div>
+  <h2>2.1 Core flow</h2>
+  <svg width="680" height="120" viewBox="0 0 680 120">
+    <g font-size="10" font-weight="700">
+      <rect x="0" y="30" width="112" height="56" rx="12" fill="#FFF1E7" stroke="#FF7A1A"/><text x="56" y="54" text-anchor="middle">Paste link /</text><text x="56" y="68" text-anchor="middle">upload</text>
+      <rect x="142" y="30" width="112" height="56" rx="12" fill="#FFF1E7" stroke="#FF7A1A"/><text x="198" y="54" text-anchor="middle">Set language,</text><text x="198" y="68" text-anchor="middle">style · Get clips</text>
+      <rect x="284" y="30" width="112" height="56" rx="12" fill="#FFF1E7" stroke="#FF7A1A"/><text x="340" y="54" text-anchor="middle">Clips stream in</text><text x="340" y="68" text-anchor="middle">(push when done)</text>
+      <rect x="426" y="30" width="112" height="56" rx="12" fill="#FFF1E7" stroke="#FF7A1A"/><text x="482" y="54" text-anchor="middle">Swipe review</text><text x="482" y="68" text-anchor="middle">keep / discard</text>
+      <rect x="568" y="30" width="112" height="56" rx="12" fill="url(#lg)"/><text x="624" y="54" text-anchor="middle" fill="#fff">Light edit →</text><text x="624" y="68" text-anchor="middle" fill="#fff">export / share</text>
+    </g>
+    <g stroke="#FF7A1A" stroke-width="2" fill="none" marker-end="url(#ah)">
+      <path d="M114 58h24"/><path d="M256 58h24"/><path d="M398 58h24"/><path d="M540 58h24"/>
+    </g>
+    <defs><marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#FF7A1A"/></marker></defs>
+    <text x="0" y="110" font-size="9" fill="#8A8A98">Target: link pasted → first reviewable clip in under 5 minutes for a 60-minute podcast; full set streams in behind it.</text>
+  </svg>
+
+  <h2>2.2 Design principles</h2>
+  <div class="grid2">
+    <div class="card"><h4>1. Preview never waits for a render</h4><p class="small muted">Captions, cuts and reframing are drawn live on-device over the source. Rendering happens once, on export.</p></div>
+    <div class="card"><h4>2. The video is always visible</h4><p class="small muted">Split layout: preview on top, tools below. Sheets never cover more than half the screen (Kalakar's biggest mobile flaw).</p></div>
+    <div class="card"><h4>3. Hinglish is a first-class language</h4><p class="small muted">"Hinglish" is an explicit choice; script (Roman / देवनागरी / both) can be switched anytime without re-processing.</p></div>
+    <div class="card"><h4>4. Money is never a surprise</h4><p class="small muted">Cost is shown before any processing. You pay for clips you export, not minutes you upload.</p></div>
+    <div class="card"><h4>5. Explain the AI</h4><p class="small muted">Every clip shows <i>why</i> it was picked (hook, payoff, topic) — not just a score users don't trust.</p></div>
+    <div class="card"><h4>6. Built for real phones &amp; networks</h4><p class="small muted">Works on 3–4 GB RAM Android, resumable everything, background processing, small app size.</p></div>
+  </div>
+  <p class="small muted" style="margin-top:8px"><b>Visual language:</b> dark UI (creator-native, makes video pop), saffron→magenta "flow" gradient for primary actions, green/amber scores, Inter + Noto Sans Devanagari. Thumb-zone primary actions; one primary CTA per screen.</p>
+</section>
+
+<!-- ---------- Screens 01–02 ---------- -->
+<section class="break">
+  <h2 style="margin-top:0">2.3 Screens</h2>
+  <div class="mockrow">
+    <!-- 01 Onboarding -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>01</span>Onboarding — personalise in 2 taps</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:41</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row g6" style="margin-top:6px"><svg width="26" height="26"><use href="#logo"/></svg><b style="font-size:14px">FrameFlow</b></div>
+          <div class="t-m" style="margin-top:16px">Step 1 of 2</div>
+          <div class="t-title" style="font-size:21px;margin-top:4px">Aap kya banate ho?</div>
+          <div class="t-m" style="font-size:11px;margin-top:4px">We'll tune clip picks and styles for you.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+            <div class="panel" style="border-color:var(--saffron);background:rgba(255,122,26,.10)"><div style="font-size:20px">🎙️</div><b>Podcasts</b><div class="t-m">Interviews, talk shows</div></div>
+            <div class="panel"><div style="font-size:20px">✂️</div><b>I clip for others</b><div class="t-m">Fan pages, agencies</div></div>
+            <div class="panel"><div style="font-size:20px">🔥</div><b>Motivation</b><div class="t-m">Talks, speeches</div></div>
+            <div class="panel"><div style="font-size:20px">🙏</div><b>Spiritual</b><div class="t-m">Katha, satsang</div></div>
+            <div class="panel"><div style="font-size:20px">📚</div><b>Education</b><div class="t-m">Classes, explainers</div></div>
+            <div class="panel"><div style="font-size:20px">📈</div><b>Finance / News</b><div class="t-m">Markets, debates</div></div>
+          </div>
+          <div class="lbl" style="margin-top:14px">Your videos are mostly in</div>
+          <div class="row g6" style="flex-wrap:wrap">
+            <span class="chip on">✓ Hinglish</span><span class="chip deva">हिन्दी</span><span class="chip">English</span><span class="chip deva">मराठी</span><span class="chip">+ more</span>
+          </div>
+          <div class="btn pri" style="margin-top:22px">Continue</div>
+          <div class="t-m" style="text-align:center;margin-top:8px">Continue with Google · Phone OTP on next step</div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Persona + genre</b> pick sets default genre prompt, clip length and caption template.</li>
+        <li><b>Language first</b>: "Hinglish" is explicit (Kalakar makes users pick "English" for Hinglish — a known confusion).</li>
+        <li>Sign-in after value is shown: Google or phone OTP (+91 default). No password.</li>
+      </ul></div>
+    </div>
+
+    <!-- 02 Home -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>02</span>Home — paste a link, done</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:41</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row sb" style="margin-top:4px">
+            <div class="row g6"><svg width="24" height="24"><use href="#logo"/></svg><b style="font-size:14px">FrameFlow</b></div>
+            <span class="chip" style="color:#FFB27A">⚡ 38 clips left</span>
+          </div>
+          <div class="t-title" style="font-size:20px;margin-top:14px">Namaste, Aarav 👋</div>
+          <div class="t-m" style="font-size:11px">Drop a long video. Get shorts in minutes.</div>
+          <div class="panel" style="margin-top:12px;border-color:#3A3A48">
+            <div class="row sb"><span style="color:#8D8D9E">🔗 youtube.com/watch?v=…</span><span class="chip on" style="padding:4px 8px">Paste</span></div>
+          </div>
+          <div class="row g6" style="margin-top:8px">
+            <div class="btn sec" style="flex:1;height:36px;font-size:11px">⬆ Upload video</div>
+            <div class="btn sec" style="flex:1;height:36px;font-size:11px">🎙 Record</div>
+          </div>
+          <div class="t-m" style="margin-top:6px">Tip: Share → FrameFlow from the YouTube app</div>
+          <div class="row sb" style="margin-top:14px"><b style="font-size:12.5px">Recent</b><span class="t-m">See all</span></div>
+          <div class="panel row g8" style="margin-top:7px;padding:8px">
+            <div class="thumb" style="width:52px;height:52px;flex:none"><svg class="person" width="52" height="52"><use href="#person"/></svg></div>
+            <div style="flex:1"><b>Desi Hustle Podcast · Ep 42</b><div class="t-m">1:12:40 · Hinglish</div>
+              <div style="height:5px;border-radius:9px;background:#2A2A36;margin-top:6px"><div style="width:62%;height:5px;border-radius:9px;background:var(--grad)"></div></div>
+              <div class="t-m" style="margin-top:3px;color:#FFB27A">Finding clips · 9 ready to review</div></div>
+          </div>
+          <div class="panel row g8" style="margin-top:7px;padding:8px">
+            <div class="thumb b" style="width:52px;height:52px;flex:none"><svg class="person" width="52" height="52"><use href="#person2"/></svg></div>
+            <div style="flex:1"><b>Paisa Talks with Neha · Ep 17</b><div class="t-m">58:02 · Hinglish</div><div class="t-m" style="margin-top:5px;color:var(--score)">✓ 26 clips · 11 kept · 6 posted</div></div>
+          </div>
+          <div class="panel row g8" style="margin-top:7px;padding:8px">
+            <div class="thumb c" style="width:52px;height:52px;flex:none"><svg class="person" width="52" height="52"><use href="#person"/></svg></div>
+            <div style="flex:1"><b class="deva">सत्संग · प्रवचन भाग 3</b><div class="t-m">1:41:15 · हिन्दी</div><div class="t-m" style="margin-top:5px;color:var(--score)">✓ 34 clips · 14 kept</div></div>
+          </div>
+        </div>
+        <div class="tabbar"><div class="on">⌂<span>Home</span></div><div>▦<span>Projects</span></div><div><span class="plus">+</span></div><div>◐<span>Styles</span></div><div>☺<span>Me</span></div></div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Link first</b>: no multi-GB upload over mobile data. Also a share-sheet target from YouTube.</li>
+        <li><b>Balance always visible</b> in clips, not credits/minutes.</li>
+        <li>Projects show live status: clips ready while processing continues.</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------- Screens 03–04 ---------- -->
+<section class="break">
+  <div class="mockrow">
+    <!-- 03 Submit sheet -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>03</span>Get clips — one sheet, smart defaults</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:41</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row g8" style="margin-top:2px">
+            <div class="thumb" style="width:92px;height:54px;flex:none"><svg class="person" width="54" height="54"><use href="#person"/></svg><span class="dur">1:12:40</span></div>
+            <div><b style="font-size:11.5px">Desi Hustle Podcast · Ep 42</b><div class="t-m">YouTube · 1080p · 2 speakers</div></div>
+          </div>
+          <div class="lbl">Spoken language</div>
+          <div class="row g4"><span class="chip on">✓ Hinglish</span><span class="chip deva">हिन्दी</span><span class="chip">English</span><span class="chip">Auto</span></div>
+          <div class="lbl">Caption script</div>
+          <div class="seg"><div class="on">Roman</div><div class="deva">देवनागरी</div><div>Both</div></div>
+          <div class="lbl">Genre · Clip length · Ratio</div>
+          <div class="row g4"><span class="chip">🎙 Podcast ▾</span><span class="chip">Auto 30–90s ▾</span><span class="chip">9:16 ▾</span></div>
+          <div class="lbl">Focus (optional)</div>
+          <div class="panel" style="padding:6px 8px;color:#8D8D9E">e.g. "money, career, funny moments"</div>
+          <div class="lbl">Caption style</div>
+          <div class="row g6">
+            <div class="thumb" style="width:50px;height:40px;outline:2px solid var(--saffron)"><div class="cap" style="top:12px;font-size:10px">Desi <span class="hl">Pop</span></div></div>
+            <div class="thumb b" style="width:50px;height:40px"><div class="cap" style="top:12px;font-size:10px">Bold <span class="hl2">Box</span></div></div>
+            <div class="thumb c" style="width:50px;height:40px"><div class="cap" style="top:12px;font-size:10px">Clean</div></div>
+            <div class="thumb d" style="width:50px;height:40px"><div class="cap deva" style="top:12px;font-size:10px">कराओके</div></div>
+          </div>
+          <div class="row sb" style="margin-top:9px"><span>Hook title on top clips</span><span class="tog"></span></div>
+                    <div class="panel row sb" style="margin-top:9px;padding:7px 10px;background:rgba(61,220,132,.08);border-color:rgba(61,220,132,.4)">
+            <span><b style="color:var(--score)">~25 clips expected</b><br><span class="t-m">Free to generate · pay only for clips you export</span></span><span style="font-size:16px">✓</span>
+          </div>
+          <div class="btn pri" style="margin-top:9px">✨ Get clips</div>
+          <div class="t-m" style="text-align:center;margin-top:5px;font-size:8.5px">I have the rights to use this video · Save as my default</div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li>Pattern from OpusClip's submit sheet + Kalakar's prepare modal, with <b>Hinglish</b> and <b>script</b> made explicit.</li>
+        <li><b>Cost shown before processing</b> — the category's #1 complaint is surprise credit burn.</li>
+        <li>Rights confirmation line; defaults remembered per user.</li>
+      </ul></div>
+    </div>
+
+    <!-- 04 Processing -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>04</span>Processing — clips stream in</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:43</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row sb" style="margin-top:2px"><span style="font-size:16px">‹</span><b>Ep 42</b><span class="t-m">⋯</span></div>
+          <div class="row g8" style="margin-top:12px">
+            <div class="ring"><div>38%</div></div>
+            <div><div class="t-h" style="font-size:14px">Finding your best moments</div><div class="t-m">About 4 min left · you can close the app</div></div>
+          </div>
+          <div class="panel" style="margin-top:12px;padding:9px 10px">
+            <div class="row sb"><span style="color:var(--score)">✓ Video fetched</span><span class="t-m">0:42</span></div>
+            <div class="row sb" style="margin-top:6px"><span style="color:var(--score)">✓ Speakers found · 2</span><span class="t-m">1:05</span></div>
+            <div class="row sb" style="margin-top:6px"><span>◐ Transcribing Hinglish</span><span class="t-m">41 / 72 min</span></div>
+            <div class="row sb" style="margin-top:6px"><span>◐ Picking highlights</span><span class="t-m">running</span></div>
+            <div class="row sb" style="margin-top:6px;color:#6B6B7B"><span>○ Auto-reframe 9:16</span><span>next</span></div>
+          </div>
+          <div class="row sb" style="margin-top:12px"><b style="font-size:12.5px">3 clips ready</b><span class="chip on">Review now →</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px">
+            <div class="thumb" style="height:132px"><svg class="person" width="86" height="86"><use href="#person2"/></svg><span class="score">94</span><span class="dur">0:48</span></div>
+            <div class="thumb b" style="height:132px"><svg class="person" width="86" height="86"><use href="#person"/></svg><span class="score">89</span><span class="dur">0:36</span></div>
+            <div class="thumb c" style="height:132px"><svg class="person" width="86" height="86"><use href="#person2"/></svg><span class="score a">81</span><span class="dur">1:02</span></div>
+            <div class="shim" style="height:132px;border-radius:12px"></div>
+            <div class="shim" style="height:132px;border-radius:12px"></div>
+            <div class="shim" style="height:132px;border-radius:12px"></div>
+          </div>
+          <div class="panel" style="margin-top:10px;padding:8px 10px;font-size:10px">🔔 We'll notify you when all clips are ready. Uploads resume if your network drops.</div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Progressive results</b>: review the first clips while the rest process (OpusClip makes users wait 20–40 min).</li>
+        <li>Honest step list + ETA; Android ongoing notification / iOS Live Activity mirror this.</li>
+        <li>Failure ⇒ automatic, visible refund (nothing is charged until export anyway).</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------- Screens 05–06 ---------- -->
+<section class="break">
+  <div class="mockrow">
+    <!-- 05 Results grid -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>05</span>Results — ranked, explained</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:48</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row sb" style="margin-top:2px"><span style="font-size:16px">‹</span><b>Ep 42 · 24 clips</b><span class="t-m">☐ Select</span></div>
+          <div class="row g4" style="margin-top:8px;overflow:hidden"><span class="chip on">Best first</span><span class="chip">Timeline</span><span class="chip">★ Kept 0</span><span class="chip">Money</span><span class="chip">Career</span></div>
+          <div class="panel" style="margin-top:8px;padding:7px 9px;font-size:10px;display:flex;gap:6px;align-items:center"><span>✨</span><span style="color:#8D8D9E;flex:1">Ask for more: "3 clips about investing"</span><span class="chip" style="padding:3px 7px">Go</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px">
+            <div>
+              <div class="thumb" style="height:178px"><svg class="person" width="120" height="120"><use href="#person2"/></svg><div class="cap deva" style="top:128px;font-size:13px">पैसा <span class="hl">बचाना</span> नहीं</div><span class="score">94</span><span class="dur">0:48</span></div>
+              <b style="display:block;margin-top:5px;font-size:10.5px">Paisa bachana nahi, kamana seekho</b>
+              <div class="t-m" style="font-size:9px">Contrarian hook · clear payoff</div>
+            </div>
+            <div>
+              <div class="thumb b" style="height:178px"><svg class="person" width="120" height="120"><use href="#person"/></svg><div class="cap" style="top:122px;font-size:13px">20s ki sabse<br>badi <span class="hl2">galti</span></div><span class="score">89</span><span class="dur">0:36</span></div>
+              <b style="display:block;margin-top:5px;font-size:10.5px">20s mein ye galti mat karna</b>
+              <div class="t-m" style="font-size:9px">Strong question hook · relatable</div>
+            </div>
+            <div>
+              <div class="thumb c" style="height:120px"><svg class="person" width="96" height="96"><use href="#person2"/></svg><span class="score a">81</span><span class="dur">1:02</span></div>
+              <b style="display:block;margin-top:5px;font-size:10.5px">SIP vs FD — the honest answer</b>
+            </div>
+            <div>
+              <div class="thumb d" style="height:120px"><svg class="person" width="96" height="96"><use href="#person"/></svg><span class="score a">78</span><span class="dur">0:54</span></div>
+              <b style="display:block;margin-top:5px;font-size:10.5px">Pehli salary ka plan</b>
+            </div>
+          </div>
+        </div>
+        <div style="position:absolute;bottom:20px;left:13px;right:13px" class="btn pri">▶ Review all · swipe mode</div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Score + plain-language reason + AI title</b> on every card (Vizard/OpusClip pattern; reason added because raw scores aren't trusted).</li>
+        <li>Topic filter chips auto-extracted; <b>Reprompt</b> box asks for more clips without re-processing <span class="pill p1">P1</span>.</li>
+        <li>Multi-select → bulk export.</li>
+      </ul></div>
+    </div>
+
+    <!-- 06 Swipe review -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>06</span>Swipe review — Reels-style triage</div>
+      <div class="phone">
+        <div class="thumb" style="position:absolute;inset:0;border-radius:0">
+          <svg class="person" width="300" height="300" style="bottom:120px"><use href="#person2"/></svg>
+          <div class="cap deva" style="top:370px;font-size:25px">सबसे बड़ी <span class="hl">गलती</span><br>पैसा सिर्फ़ बचाना</div>
+        </div>
+        <div class="island"></div>
+        <div class="status" style="position:relative"><span>9:49</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr" style="position:relative">
+          <div class="row sb"><span style="font-size:16px">✕</span><b>7 / 24</b><span class="chip" style="background:rgba(0,0,0,.4)">देवनागरी ⇄ Roman</span></div>
+          <div style="height:3px;border-radius:9px;background:rgba(255,255,255,.2);margin-top:8px"><div style="width:30%;height:3px;background:#fff;border-radius:9px"></div></div>
+          <div style="position:absolute;right:12px;top:66px;display:flex;flex-direction:column;gap:6px;align-items:center">
+            <div style="font-size:24px;font-weight:900;color:var(--score);text-shadow:0 2px 8px #000">92</div>
+            <div class="grade">Hook<b>A</b></div><div class="grade">Flow<b>A-</b></div><div class="grade">Value<b>B+</b></div>
+          </div>
+        </div>
+        <div style="position:absolute;left:12px;right:12px;bottom:118px;background:rgba(10,10,14,.78);backdrop-filter:blur(6px);border:1px solid #2E2E3C;border-radius:14px;padding:9px 10px">
+          <b style="color:#FFB27A">Why this clip</b><div style="margin-top:3px;color:#DADAE4">Guest gives a contrarian money take and lands the payoff in 41s. Starts on a question — strong hook.</div>
+          <div class="t-m" style="margin-top:5px">0:48 · 12:31 → 13:19 · Speaker B</div>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:36px;display:flex;justify-content:space-around;align-items:center">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div class="fab" style="position:static;background:#2A2A36;color:#FF6B6B">✕</div><span class="t-m">Discard</span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div class="fab" style="position:static;background:#2A2A36;width:38px;height:38px;font-size:14px">✎</div><span class="t-m">Edit</span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div class="fab" style="position:static;background:var(--grad)">✓</div><span class="t-m">Keep</span></div>
+        </div>
+        <div class="t-m" style="position:absolute;bottom:16px;width:100%;text-align:center;font-size:8.5px">← swipe to discard · swipe to keep →</div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Our signature interaction</b>: full-screen vertical pager, the way users already consume Reels.</li>
+        <li>Every keep/discard is training data for the India-tuned ranker (our moat).</li>
+        <li>Script toggle right on the clip — no regeneration.</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------- Screens 07–08 ---------- -->
+<section class="break">
+  <div class="mockrow">
+    <!-- 07 Editor transcript -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>07</span>Editor — the transcript is the timeline</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:52</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row sb"><span style="font-size:15px">‹</span><span class="t-m">↶ ↷</span><span class="chip on" style="padding:4px 10px">Export</span></div>
+          <div class="thumb" style="height:214px;width:121px;margin:8px auto 0"><svg class="person" width="120" height="120"><use href="#person2"/></svg><div class="cap" style="top:166px;font-size:11px">Paisa <span class="hl">bachana</span> nahi,<br>kamana seekho</div></div>
+          <div class="row g4" style="margin-top:8px;justify-content:center"><span class="chip on">Transcript</span><span class="chip">Style</span><span class="chip">Layout</span><span class="chip">Hook</span><span class="chip">Audio</span></div>
+          <div class="panel row sb" style="margin-top:8px;padding:6px 9px;border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.08)"><span style="color:#FFD08A">6 fillers · 2 long pauses found</span><span class="chip" style="padding:3px 8px">Review &amp; remove</span></div>
+          <div style="margin-top:8px;font-size:11px;line-height:1.75">
+            <div><span class="spk a">A</span><span class="word del">Toh</span> <span class="word fill">basically</span> aapka kehna hai ki saving se koi ameer nahi banta?</div>
+            <div style="margin-top:4px"><span class="spk b">B</span>Bilkul. <span class="word fill">Matlab</span> dekho, 20s mein sabse badi galti hai ki log sirf paisa bachate hain. <span class="word emph">Paisa bachana nahi, kamana seekho.</span> Skills mein <span class="word">investment</span> karo, wahi compound hota hai.</div>
+            <div style="margin-top:4px;color:#6B6B7B"><span class="spk a" style="opacity:.5">A</span>Haan, aur… <span class="t-m">+ add more from source</span></div>
+          </div>
+          <div style="margin-top:9px;position:relative" class="tl"><div class="ph"></div></div>
+          <div class="row sb t-m" style="margin-top:4px;font-size:8.5px"><span>12:31</span><span>0:48</span><span>13:19</span></div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Delete words to cut</b> the video; struck-through words are removed. "+ add more from source" extends context.</li>
+        <li><b>Hindi filler detection</b> (matlab, basically, toh, na) with review-before-cut <span class="pill p1">P1</span>.</li>
+        <li>Speaker chips from diarization; trim handles on mini-timeline for fine control.</li>
+      </ul></div>
+    </div>
+
+    <!-- 08 Word menu -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>08</span>Word tap menu — fix anything in one tap</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:53</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row sb"><span style="font-size:15px">‹</span><span class="t-m">↶ ↷</span><span class="chip on" style="padding:4px 10px">Export</span></div>
+          <div class="thumb" style="height:214px;width:121px;margin:8px auto 0"><svg class="person" width="120" height="120"><use href="#person2"/></svg><div class="cap" style="top:166px;font-size:11px">Skills mein <span class="hl2">investment</span><br>karo</div></div>
+          <div class="row g4" style="margin-top:8px;justify-content:center"><span class="chip on">Transcript</span><span class="chip">Style</span><span class="chip">Layout</span><span class="chip">Hook</span><span class="chip">Audio</span></div>
+          <div style="margin-top:10px;font-size:11px;line-height:1.75;opacity:.55"><span class="spk b">B</span>Bilkul. Matlab dekho, 20s mein sabse badi galti hai ki log sirf paisa bachate hain.</div>
+          <div style="font-size:11px;line-height:1.75;margin-top:2px">Paisa bachana nahi, kamana seekho. Skills mein <span class="word sel">investment</span> karo, wahi compound hota hai.</div>
+          <div style="margin-top:8px;background:#22222C;border:1px solid #3A3A48;border-radius:14px;padding:6px;box-shadow:0 10px 24px rgba(0,0,0,.5)">
+            <div class="toolrow">
+              <div class="tool on"><i>★</i>Emphasize</div><div class="tool"><i>◎</i>Spotlight</div><div class="tool"><i>✎</i>Edit</div><div class="tool"><i>⇄</i>Replace</div><div class="tool"><i>⫽</i>Split</div>
+            </div>
+            <div style="border-top:1px solid #33333F;margin:7px 0 6px"></div>
+            <div class="row sb" style="font-size:9.5px;padding:0 4px"><span class="t-m">Highlight</span>
+              <span class="row g4"><span style="width:16px;height:16px;border-radius:50%;background:#FFD23F;outline:2px solid #fff"></span><span style="width:16px;height:16px;border-radius:50%;background:var(--saffron)"></span><span style="width:16px;height:16px;border-radius:50%;background:#3DDC84"></span><span style="width:16px;height:16px;border-radius:50%;background:#4DA3FF"></span></span>
+            </div>
+            <div class="row sb" style="font-size:9.5px;padding:6px 4px 2px"><span class="t-m">Spelling</span><span style="color:#FFB27A">Remember "investment" for all clips ✓</span></div>
+          </div>
+          <div class="row g6" style="margin-top:9px"><span class="chip">← Prev line</span><span class="chip">Next line →</span><span class="chip" style="color:#FF8A8A">Delete word</span></div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li>Kalakar's best idea, made touch-native: <b>Emphasize · Spotlight · Edit · Replace all · Split</b>, move to prev/next line.</li>
+        <li><b>Remember spelling</b> → brand vocabulary (names, Hinglish spellings) applied to future transcripts.</li>
+        <li>Preview stays visible; changes apply instantly (no render).</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------- Screens 09–10 ---------- -->
+<section class="break">
+  <div class="mockrow">
+    <!-- 09 Style -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>09</span>Style — script toggle + templates</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:55</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row sb"><span style="font-size:15px">‹</span><span class="t-m">↶ ↷</span><span class="chip on" style="padding:4px 10px">Export</span></div>
+          <div class="thumb" style="height:214px;width:121px;margin:8px auto 0"><svg class="person" width="120" height="120"><use href="#person2"/></svg><div class="cap deva" style="top:160px;font-size:12px">पैसा <span class="hl">बचाना</span> नहीं</div><div class="cap" style="top:182px;font-size:8.5px;font-weight:700;color:#ddd">Don't just save money</div></div>
+          <div class="row g4" style="margin-top:8px;justify-content:center"><span class="chip">Transcript</span><span class="chip on">Style</span><span class="chip">Layout</span><span class="chip">Hook</span><span class="chip">Audio</span></div>
+          <div class="lbl">Script — switch anytime, no re-processing</div>
+          <div class="seg"><div>Roman</div><div class="deva">देवनागरी</div><div class="on">Both + EN</div></div>
+          <div class="lbl">Templates</div>
+          <div class="row g6">
+            <div style="text-align:center"><div class="thumb" style="width:58px;height:74px;outline:2px solid var(--saffron)"><div class="cap" style="top:26px;font-size:10px">Desi <span class="hl">Pop</span></div></div><div class="t-m" style="font-size:8.5px;margin-top:3px">Desi Pop</div></div>
+            <div style="text-align:center"><div class="thumb b" style="width:58px;height:74px"><div class="cap" style="top:26px;font-size:10px"><span class="hl2">Box</span> Bold</div></div><div class="t-m" style="font-size:8.5px;margin-top:3px">Box Bold</div></div>
+            <div style="text-align:center"><div class="thumb c" style="width:58px;height:74px"><div class="cap deva" style="top:26px;font-size:10px">कराओके</div></div><div class="t-m" style="font-size:8.5px;margin-top:3px">Karaoke</div></div>
+            <div style="text-align:center"><div class="thumb d" style="width:58px;height:74px"><div class="cap" style="top:26px;font-size:10px">Podcast</div></div><div class="t-m" style="font-size:8.5px;margin-top:3px">Clean</div></div>
+          </div>
+          <div class="lbl">Layout of captions</div>
+          <div class="row sb"><span>Words per line</span><span class="row g4"><span class="chip" style="padding:3px 8px">−</span><b>3</b><span class="chip" style="padding:3px 8px">+</span></span></div>
+          <div class="row sb" style="margin-top:6px"><span>Auto emphasis (AI keywords)</span><span class="tog"></span></div>
+          <div class="row sb" style="margin-top:6px"><span>Emojis</span><span class="tog off"></span></div>
+          <div class="row sb" style="margin-top:6px"><span>Apply to all 11 kept clips</span><span class="tog"></span></div>
+          <div class="t-m" style="margin-top:8px">Drag captions on the video to move · pinch to resize</div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Instant script switch</b>: Roman, देवनागरी, or bilingual with English line — one transcript, three renderings.</li>
+        <li>Indic-shaped fonts per script; <b>gesture positioning</b> on canvas (Kalakar uses numeric X/Y fields).</li>
+        <li>"Apply to all kept clips" + save as brand preset <span class="pill p1">P1</span>.</li>
+      </ul></div>
+    </div>
+
+    <!-- 10 Layout / reframe -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>10</span>Layout — speaker-aware reframe</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>9:56</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row sb"><span style="font-size:15px">‹</span><span class="t-m">↶ ↷</span><span class="chip on" style="padding:4px 10px">Export</span></div>
+          <div style="height:214px;width:121px;margin:8px auto 0;border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+            <div class="thumb b" style="flex:1;border-radius:0"><svg class="person" width="90" height="90"><use href="#person"/></svg></div>
+            <div style="height:2px;background:#000"></div>
+            <div class="thumb" style="flex:1;border-radius:0;position:relative"><svg class="person" width="90" height="90"><use href="#person2"/></svg><div class="cap" style="top:4px;font-size:9px">kamana <span class="hl">seekho</span></div></div>
+          </div>
+          <div class="row g4" style="margin-top:8px;justify-content:center"><span class="chip">Transcript</span><span class="chip">Style</span><span class="chip on">Layout</span><span class="chip">Hook</span><span class="chip">Audio</span></div>
+          <div class="lbl">Layout</div>
+          <div class="row g6">
+            <div style="text-align:center"><div style="width:44px;height:64px;border-radius:8px;background:#2A2A36;border:1px solid #3A3A48"></div><div class="t-m" style="font-size:8.5px;margin-top:3px">Auto</div></div>
+            <div style="text-align:center"><div style="width:44px;height:64px;border-radius:8px;background:#2A2A36;display:flex;align-items:center"><div style="width:44px;height:26px;background:#4A4A5A"></div></div><div class="t-m" style="font-size:8.5px;margin-top:3px">Fit</div></div>
+            <div style="text-align:center"><div style="width:44px;height:64px;border-radius:8px;background:#4A4A5A"></div><div class="t-m" style="font-size:8.5px;margin-top:3px">Fill</div></div>
+            <div style="text-align:center"><div style="width:44px;height:64px;border-radius:8px;overflow:hidden;outline:2px solid var(--saffron);display:flex;flex-direction:column;gap:2px;background:#000"><div style="flex:1;background:#5A4A6A"></div><div style="flex:1;background:#4A5A6A"></div></div><div class="t-m" style="font-size:8.5px;margin-top:3px;color:#FFB27A">Split</div></div>
+            <div style="text-align:center"><div style="width:44px;height:64px;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;gap:2px;background:#000"><div style="flex:2;background:#3A5A4A"></div><div style="flex:1;background:#5A4A6A"></div></div><div class="t-m" style="font-size:8.5px;margin-top:3px">Screen</div></div>
+          </div>
+          <div class="lbl">Framing</div>
+          <div class="row sb"><span>Follow active speaker</span><span class="tog"></span></div>
+          <div class="row sb" style="margin-top:6px"><span>Keep original framing</span><span class="tog off"></span></div>
+          <div class="panel" style="margin-top:9px;padding:7px 9px">
+            <div class="row sb"><span class="t-m">Scenes in this clip</span><span class="t-m">tap to override</span></div>
+            <div class="row g4" style="margin-top:6px">
+              <div style="flex:2;height:22px;border-radius:5px;background:#3B2B63;font-size:8.5px;display:flex;align-items:center;padding-left:5px">Split</div>
+              <div style="flex:1;height:22px;border-radius:5px;background:#5A2A2A;font-size:8.5px;display:flex;align-items:center;padding-left:5px">B solo</div>
+              <div style="flex:2;height:22px;border-radius:5px;background:#3B2B63;font-size:8.5px;display:flex;align-items:center;padding-left:5px">Split</div>
+            </div>
+          </div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Split layout</b> for 2-person podcasts — the dominant Indian format; auto switches to solo when one person talks.</li>
+        <li><b>Keep original framing</b> escape hatch (reframe "fighting the shot" is a top OpusClip complaint).</li>
+        <li>Per-scene overrides in a simple strip, not a full NLE timeline.</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------- Screens 11–12 ---------- -->
+<section class="break">
+  <div class="mockrow">
+    <!-- 11 Export & share -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>11</span>Export &amp; share — per platform</div>
+      <div class="phone">
+        <div class="thumb" style="position:absolute;inset:0;border-radius:0;opacity:.5"><svg class="person" width="280" height="280" style="bottom:300px"><use href="#person2"/></svg></div>
+        <div class="dim"></div>
+        <div class="island"></div>
+        <div class="status" style="position:relative"><span>9:58</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="sheet" style="top:120px">
+          <div class="grab"></div>
+          <div class="row sb"><b style="font-size:14px">Export 11 kept clips</b><span class="t-m">✕</span></div>
+          <div class="panel row sb" style="margin-top:8px;padding:7px 10px"><span>Quality</span><span class="row g4"><span class="chip on" style="padding:3px 8px">Auto 1080p</span><span class="chip" style="padding:3px 8px">4K</span></span></div>
+          <div class="t-m" style="margin-top:4px">~ 168 MB total · renders in the cloud, keeps going if you leave</div>
+          <div class="lbl">Post to</div>
+          <div class="panel" style="padding:8px">
+            <div class="row sb"><span class="row g8"><span class="platform" style="background:linear-gradient(45deg,#F58529,#DD2A7B,#8134AF)">IG</span><b>Instagram Reels</b></span><span class="tog"></span></div>
+            <div class="row sb" style="margin-top:7px"><span class="row g8"><span class="platform" style="background:#FF0000">▶</span><b>YouTube Shorts</b></span><span class="tog"></span></div>
+            <div class="row sb" style="margin-top:7px"><span class="row g8"><span class="platform" style="background:#25D366">W</span><b>WhatsApp Status</b></span><span class="tog off"></span></div>
+            <div class="row sb" style="margin-top:7px"><span class="row g8"><span class="platform" style="background:#3A3A48">⬇</span><b>Save to gallery</b></span><span class="tog"></span></div>
+          </div>
+          <div class="lbl">Caption · Reels (AI, Hinglish)</div>
+          <div class="panel" style="padding:8px;font-size:10px;color:#DADAE4">Saving se koi ameer nahi banta 💸 Skills mein invest karo — wahi compound hota hai. #paisa #finance #hinglish #podcastclips<div class="row sb" style="margin-top:6px"><span class="chip" style="padding:3px 8px">✨ Rewrite</span><span class="t-m">142 / 2200</span></div></div>
+          <div class="panel row sb" style="margin-top:8px;padding:7px 10px;background:rgba(61,220,132,.08);border-color:rgba(61,220,132,.4)"><span><b style="color:var(--score)">11 clips</b> from your pack</span><span class="t-m">38 → 27 left</span></div>
+          <div class="btn pri" style="margin-top:9px">Export &amp; post</div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li><b>Server render + background</b>: no "keep the app open" (a top VN/OpusClip complaint).</li>
+        <li>Destinations that matter in India: <b>Reels, Shorts, WhatsApp Status</b>, gallery. AI caption &amp; hashtags in Hinglish per platform.</li>
+        <li>Charge = clips exported, shown before confirming.</li>
+      </ul></div>
+    </div>
+
+    <!-- 12 Pricing -->
+    <div class="mockcol">
+      <div class="mocktitle"><span>12</span>Plans — pay for clips, not minutes</div>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="status"><span>10:01</span><span class="r">▂▄▆ ▮</span></div>
+        <div class="scr">
+          <div class="row sb"><span style="font-size:15px">✕</span><span class="t-m">Restore</span></div>
+          <div class="t-title" style="font-size:20px;margin-top:6px">Pay for clips,<br>not minutes.</div>
+          <div class="t-m" style="font-size:10.5px;margin-top:4px">Generate &amp; preview free. Pay only when you export.</div>
+          <div class="panel" style="margin-top:10px;padding:9px 10px">
+            <div class="row sb"><b>Week Pass</b><b style="font-size:14px">₹99</b></div><div class="t-m">25 clips · 7 days · no watermark</div>
+          </div>
+          <div class="panel" style="margin-top:7px;padding:9px 10px;border:1.5px solid var(--saffron);background:rgba(255,122,26,.08);position:relative">
+            <span class="pill" style="position:absolute;top:-8px;right:10px;background:var(--grad);color:#fff">MOST POPULAR</span>
+            <div class="row sb"><b>Creator</b><b style="font-size:14px">₹299<span class="t-m">/mo</span></b></div><div class="t-m">100 clips/mo · brand style · 1080p</div>
+          </div>
+          <div class="panel" style="margin-top:7px;padding:9px 10px">
+            <div class="row sb"><b>Pro</b><b style="font-size:14px">₹699<span class="t-m">/mo</span></b></div><div class="t-m">300 clips/mo · 4K · multi-account · batch links</div>
+          </div>
+          <div class="panel" style="margin-top:7px;padding:9px 10px">
+            <div class="row sb"><b>Free</b><b style="font-size:14px">₹0</b></div><div class="t-m">10 clips/mo · small watermark</div>
+          </div>
+          <div class="row g6" style="margin-top:10px;justify-content:center;flex-wrap:wrap"><span class="chip">UPI AutoPay</span><span class="chip">Cancel in 1 tap</span><span class="chip">7-day refund</span></div>
+          <div class="btn pri" style="margin-top:10px">Start Creator · ₹299/mo</div>
+          <div class="t-m" style="text-align:center;margin-top:6px;font-size:8.5px">Unused clips roll over 1 month · We remind you 2 days before renewal</div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+      <div class="notes"><ul>
+        <li>Prices are <b>hypotheses</b> — Phase 0 measures unit cost; final packaging after beta.</li>
+        <li>Trust features as the pitch: cost-first, roll-over, renewal reminder, refund window (answers the category's #1 complaint).</li>
+        <li>Store billing rules apply (App Store IAP; Play Billing / user-choice billing in India) — see §3.6.</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= PART 3 PRD ======================= -->
+<section class="break tight">
+  <div class="part"><span class="num">03</span><h1>Product requirements (PRD)</h1></div>
+  <p class="muted">Scope: FrameFlow v1 (MVP) on Android and iOS, plus the backend that powers it. Priorities: <span class="pill p0">P0</span> required for MVP · <span class="pill p1">P1</span> fast-follow (Phase 2) · <span class="pill p2">P2</span> later.</p>
+
+  <h2>3.1 Goals &amp; non-goals</h2>
+  <div class="grid2">
+    <div class="card"><h4>Goals (MVP)</h4><ul class="small">
+      <li>A creator can go from a YouTube link or upload of a Hindi/Hinglish/English video (up to 3 h) to exported, captioned 9:16 clips entirely on a phone.</li>
+      <li>First reviewable clip in &lt; 5 min for a 60-min source (target).</li>
+      <li>Hinglish captions good enough that most clips need ≤ 2 word fixes.</li>
+      <li>≥ 50% of generated clips judged "postable as-is or with light edits" by beta users (target).</li>
+      <li>Transparent pay-per-exported-clip pricing in INR with UPI.</li>
+      <li>Profitable unit economics at ≤ ₹3 cost per exported clip (target, Phase 0 to verify).</li>
+    </ul></div>
+    <div class="card"><h4>Non-goals (v1)</h4><ul class="small">
+      <li>Generative video, AI avatars, text-to-video.</li>
+      <li>Dubbing / voice cloning (platforms give it away).</li>
+      <li>Deep multi-track NLE editing (VN owns this; we match gestures, not depth).</li>
+      <li>Desktop/web editor (web is used only for marketing &amp; account management at launch).</li>
+      <li>Scheduling and direct API posting to every platform (share-sheet first; scheduling P1).</li>
+      <li>Languages beyond Hindi, Hinglish, English in MVP (regional in Phase 3).</li>
+    </ul></div>
+  </div>
+
+  <h2>3.2 Success metrics</h2>
+  <table>
+    <tr><th>Metric</th><th>Definition</th><th style="width:22%">Beta target</th></tr>
+    <tr><td><b>North star</b> — clips exported / week</td><td>Clips rendered for export or shared, deduplicated</td><td>Grows week over week</td></tr>
+    <tr><td>Activation</td><td>% of new users who export ≥ 1 clip within 24 h of sign-up</td><td>≥ 40%</td></tr>
+    <tr><td>Time to first clip (TTFC)</td><td>Submit → first clip visible in results (p50 / p90), 60-min source</td><td>&lt; 5 min / &lt; 8 min</td></tr>
+    <tr><td>Keep rate</td><td>Kept ÷ reviewed clips</td><td>≥ 35%</td></tr>
+    <tr><td>Caption edit rate</td><td>Word edits per exported clip</td><td>≤ 2</td></tr>
+    <tr><td>Pipeline success</td><td>Projects completing without error</td><td>≥ 98%</td></tr>
+    <tr><td>Retention</td><td>W1 / W4 retention of activated users</td><td>≥ 45% / ≥ 25%</td></tr>
+    <tr><td>Monetisation</td><td>Free → paid conversion of activated users (30 d)</td><td>≥ 6%</td></tr>
+    <tr><td>Unit cost</td><td>Infra + vendor cost ÷ exported clips</td><td>≤ ₹3</td></tr>
+    <tr><td>Quality</td><td>Crash-free sessions (Android / iOS)</td><td>≥ 99.5%</td></tr>
+  </table>
+
+  <h2>3.3 Key user stories</h2>
+  <table>
+    <tr><th style="width:8%">#</th><th>As a… I want… so that…</th><th style="width:9%">Pri</th></tr>
+    <tr><td>US1</td><td>As a <b>clipper</b>, I paste a YouTube link and get ranked clips without uploading anything, so I can work from my phone on mobile data.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>US2</td><td>As a <b>podcaster</b>, I choose Hinglish and Roman or Devanagari captions, and can switch script later without redoing the project.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>US3</td><td>As any user, I see the first clips within minutes and get notified when everything is ready, so I don't stare at a spinner.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>US4</td><td>As any user, I swipe through clips to keep or discard quickly, and understand why each was picked.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>US5</td><td>As an <b>editor</b>, I fix a wrong word in one tap and have the fix remembered for future videos.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>US6</td><td>As a podcaster, two speakers are shown in a split layout automatically, and I can override per scene.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>US7</td><td>As any user, I know what an export costs before I confirm, and pay with UPI.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>US8</td><td>As a creator, I trim by deleting words in the transcript and remove Hindi filler words after reviewing them.</td><td><span class="pill p0">P0</span> / <span class="pill p1">P1</span></td></tr>
+    <tr><td>US9</td><td>As a clipper, I ask "3 more clips about investing" without reprocessing the video.</td><td><span class="pill p1">P1</span></td></tr>
+    <tr><td>US10</td><td>As an agency, I process a batch of links into several brands' presets and post to multiple accounts.</td><td><span class="pill p1">P1</span></td></tr>
+    <tr><td>US11</td><td>As a creator, I see which clips performed and get suggestions for what to clip next.</td><td><span class="pill p2">P2</span></td></tr>
+  </table>
+</section>
+
+<section class="break tight">
+  <h2 style="margin-top:0">3.4 Functional requirements</h2>
+  <h3>A. Onboarding &amp; account</h3>
+  <table>
+    <tr><th style="width:8%">ID</th><th>Requirement</th><th style="width:9%">Pri</th></tr>
+    <tr><td>A1</td><td>Sign in with Google or phone OTP (+91 default); Apple sign-in on iOS. Guest preview allowed until first submit.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>A2</td><td>Persona + genre + primary language picker; sets defaults (genre prompt, clip length, template, script).</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>A3</td><td>App UI in English and Hindi.</td><td><span class="pill p1">P1</span></td></tr>
+    <tr><td>A4</td><td>Account deletion + data export from settings (store &amp; DPDP requirements).</td><td><span class="pill p0">P0</span></td></tr>
+  </table>
+  <h3>B. Ingest</h3>
+  <table>
+    <tr><td style="width:8%">B1</td><td>Paste a YouTube URL (public/unlisted) or use Share → FrameFlow from YouTube/Files/Gallery. Validate, show title, duration, thumbnail before submit.</td><td style="width:9%"><span class="pill p0">P0</span></td></tr>
+    <tr><td>B2</td><td>Upload from gallery/files: chunked, resumable, continues in background; optional on-device compression for &gt; 1080p sources.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>B3</td><td>Limits: up to 3 h and 10 GB per source in MVP; MP4/MOV/MKV/WebM; rights-confirmation line on submit.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>B4</td><td>Submit sheet: spoken language (Hinglish / हिन्दी / English / auto), caption script, genre, clip length, aspect ratio, optional focus prompt, caption template, toggles (hook title, clean audio, emojis), expected clip count, "save as default".</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>B5</td><td>Auto-import new uploads from a connected YouTube channel.</td><td><span class="pill p2">P2</span></td></tr>
+  </table>
+  <h3>C. Processing</h3>
+  <table>
+    <tr><td style="width:8%">C1</td><td>Streaming pipeline: transcription and clip finding start before ingest completes; clips are pushed to the client as they are produced.</td><td style="width:9%"><span class="pill p0">P0</span></td></tr>
+    <tr><td>C2</td><td>Live step list with ETA; Android ongoing notification and iOS Live Activity; push notification when complete or failed.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>C3</td><td>Word-level timestamps, speaker diarization, canonical transcript + Roman/Devanagari transliteration + English translation per word/line.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>C4</td><td>Clip selection: 30–90 s default (configurable 15 s–3 min), each with score (0–99), Hook/Flow/Value grades, plain-language reason, AI title, topic tags. Clips may stitch up to 3 segments.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>C5</td><td>Auto-reframe to 9:16 with active-speaker tracking; layouts Fill, Fit, Split (2-up), Screenshare; per-scene layout decisions.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>C6</td><td>Failure handling: automatic retry per stage; clear error reasons; nothing charged (charges only on export).</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>C7</td><td>Optional audio clean-up (denoise) before transcription.</td><td><span class="pill p1">P1</span></td></tr>
+  </table>
+  <h3>D. Review</h3>
+  <table>
+    <tr><td style="width:8%">D1</td><td>Results grid sorted by score (toggle: timeline order); topic filter chips; multi-select.</td><td style="width:9%"><span class="pill p0">P0</span></td></tr>
+    <tr><td>D2</td><td>Full-screen swipe review: keep / discard / edit; shows score, grades, reason, source timestamps, speaker; script toggle.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>D3</td><td>Reprompt: natural-language request for more/different clips using the cached transcript (no re-ingest, no re-ASR).</td><td><span class="pill p1">P1</span></td></tr>
+  </table>
+</section>
+
+<section class="break">
+  <h3 style="margin-top:0">E. Clip editor</h3>
+  <table>
+    <tr><th style="width:8%">ID</th><th>Requirement</th><th style="width:9%">Pri</th></tr>
+    <tr><td>E1</td><td>Split layout: live preview (top) + tool tabs (Transcript, Style, Layout, Hook, Audio). Preview never hidden by more than 50%. Undo/redo always visible.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>E2</td><td>Transcript editing: delete words/sentences to cut video; restore deleted; "add more from source" to extend start/end; trim handles on mini-timeline (0.1 s precision).</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>E3</td><td>Word tap menu: Emphasize, Spotlight, Edit text, Replace all, Split line, move to previous/next line, delete, highlight colour, "remember spelling" (brand vocabulary).</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>E4</td><td>Caption styles: ≥ 10 templates in MVP with Indic-shaped fonts; word-by-word highlight (karaoke); words per line; position &amp; scale by drag/pinch on canvas; auto-emphasis toggle; emoji toggle.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>E5</td><td>Script switch at any time: Roman / Devanagari / bilingual (+ English line). No re-processing.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>E6</td><td>Layout tab: Auto, Fit, Fill, Split, Screenshare; "follow active speaker"; "keep original framing"; per-scene override strip.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>E7</td><td>Hook title overlay (AI-suggested Hinglish options, editable, style presets).</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>E8</td><td>Filler-word &amp; long-pause removal for Hindi/Hinglish/English with review-before-cut list.</td><td><span class="pill p1">P1</span></td></tr>
+    <tr><td>E9</td><td>Brand presets (fonts, colours, template, logo, layout) applied at submit or to all kept clips.</td><td><span class="pill p1">P1</span></td></tr>
+    <tr><td>E10</td><td>Music bed, auto zoom punch-ins, B-roll.</td><td><span class="pill p2">P2</span></td></tr>
+  </table>
+  <h3>F. Export &amp; share</h3>
+  <table>
+    <tr><td style="width:8%">F1</td><td>Server-side render of kept clips (1080p default, 720p option; 4K on Pro if source ≥ 4K) continuing in background; download to gallery.</td><td style="width:9%"><span class="pill p0">P0</span></td></tr>
+    <tr><td>F2</td><td>Share to Instagram Reels, YouTube Shorts, WhatsApp Status via native share intents; AI caption + hashtags per platform (Hinglish), copy button.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>F3</td><td>Bulk export of selected clips; SRT/VTT export of captions.</td><td><span class="pill p0">P0</span> / <span class="pill p1">P1</span></td></tr>
+    <tr><td>F4</td><td>Direct posting via platform APIs, multi-account, scheduling calendar.</td><td><span class="pill p1">P1</span></td></tr>
+  </table>
+  <h3>G. Billing</h3>
+  <table>
+    <tr><td style="width:8%">G1</td><td>Clip-based balance: generation &amp; preview free; one clip consumed per exported clip (re-exports of the same clip free for 30 days).</td><td style="width:9%"><span class="pill p0">P0</span></td></tr>
+    <tr><td>G2</td><td>Plans: Free, Week Pass, Creator, Pro (see §3.6). Cost shown before export; renewal reminder 2 days ahead; one-tap cancel; 7-day refund on unused packs.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>G3</td><td>Payments compliant per platform: App Store IAP on iOS; Google Play Billing (and user-choice billing with UPI where permitted) on Android; web checkout via Razorpay (UPI AutoPay) for account management.</td><td><span class="pill p0">P0</span></td></tr>
+    <tr><td>G4</td><td>Transparent usage ledger in Settings (every charge and refund).</td><td><span class="pill p0">P0</span></td></tr>
+  </table>
+  <h3>H. Support &amp; trust</h3>
+  <table>
+    <tr><td style="width:8%">H1</td><td>In-app help + human support on WhatsApp (Hindi/English); feedback on any clip (👍/👎 with reason).</td><td style="width:9%"><span class="pill p0">P0</span></td></tr>
+    <tr><td>H2</td><td>Privacy: sources and renders auto-deleted after retention window (default 30 days, configurable); never used to train models without opt-in.</td><td><span class="pill p0">P0</span></td></tr>
+  </table>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">3.5 Non-functional requirements</h2>
+  <table>
+    <tr><th style="width:22%">Area</th><th>Requirement (targets)</th></tr>
+    <tr><td><b>Speed</b></td><td>TTFC p50 &lt; 5 min, p90 &lt; 8 min for a 60-min source; full project &lt; 15 min p90. Editor interactions &lt; 100 ms; script switch &lt; 300 ms. Export of a 60 s clip &lt; 60 s p90.</td></tr>
+    <tr><td><b>Devices</b></td><td>Android 10+ with 3 GB RAM; iOS 16+. Smooth 30 fps preview on a ₹12k Android phone. Install size &lt; 60 MB.</td></tr>
+    <tr><td><b>Networks</b></td><td>Works on unstable 4G: resumable uploads/downloads, idempotent API calls, offline-tolerant editing (edits sync when back online).</td></tr>
+    <tr><td><b>Reliability</b></td><td>Pipeline success ≥ 98%; crash-free sessions ≥ 99.5%; API availability 99.9%; no data loss on app kill.</td></tr>
+    <tr><td><b>Caption quality</b></td><td>Hinglish WER and timestamp accuracy measured on the FrameFlow eval set; launch bar set in Phase 0 after the vendor bake-off.</td></tr>
+    <tr><td><b>Indic rendering</b></td><td>Correct shaping of conjuncts and matras (HarfBuzz) identical in preview and export; no tofu glyphs.</td></tr>
+    <tr><td><b>Security &amp; privacy</b></td><td>TLS everywhere; encryption at rest; signed, expiring media URLs; least-privilege service access; compliance with India's DPDP Act; store privacy labels accurate.</td></tr>
+    <tr><td><b>Accessibility</b></td><td>Dynamic type, contrast ≥ 4.5:1 for text, screen-reader labels on all controls, haptics on key actions.</td></tr>
+    <tr><td><b>Observability</b></td><td>Per-stage pipeline timings and cost per project; client crash/ANR reporting; product analytics (see 3.7).</td></tr>
+  </table>
+
+  <h2>3.6 Pricing &amp; packaging (hypothesis)</h2>
+  <table>
+    <tr><th>Plan</th><th>Price</th><th>Includes</th><th>Purpose</th></tr>
+    <tr><td><b>Free</b></td><td>₹0</td><td>10 exported clips / month, small watermark, 1080p</td><td>Activation, word of mouth</td></tr>
+    <tr><td><b>Week Pass</b></td><td>₹99 / 7 days</td><td>25 clips, no watermark</td><td>Low-commitment first purchase</td></tr>
+    <tr><td><b>Creator</b></td><td>₹299 / month</td><td>100 clips, brand preset, roll-over 1 month</td><td>Podcasters &amp; creators</td></tr>
+    <tr><td><b>Pro</b></td><td>₹699 / month</td><td>300 clips, 4K, batch links, multi-account, priority queue</td><td>Clippers &amp; editors</td></tr>
+    <tr><td><b>Agency</b></td><td>Custom</td><td>Team seats, many brands, API</td><td>Phase 2+</td></tr>
+  </table>
+  <p class="small muted">Store considerations: digital goods inside the iOS app use Apple IAP; on Android, Google Play Billing with user-choice billing (where available in India) to offer UPI. Store fees (15–30%) are included in the unit-economics model. Prices finalised after Phase 0 cost measurement and beta willingness-to-pay tests.</p>
+
+  <h2>3.7 Analytics (core events)</h2>
+  <p class="small"><code>onboarding_completed</code> · <code>source_submitted</code> (type, duration, language, genre) · <code>first_clip_ready</code> (latency) · <code>project_completed</code> / <code>project_failed</code> (stage, reason) · <code>clip_reviewed</code> (kept/discarded, position, score) · <code>caption_word_edited</code> · <code>script_switched</code> · <code>layout_changed</code> · <code>export_started</code> / <code>export_completed</code> · <code>share_target_selected</code> · <code>paywall_viewed</code> · <code>purchase_completed</code> · <code>refund_requested</code>. Keep/discard and post-performance signals feed the ranking model (with consent).</p>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">3.8 Release plan</h2>
+  <table>
+    <tr><th style="width:18%">Phase</th><th style="width:12%">Duration</th><th>Scope</th><th style="width:28%">Exit criteria</th></tr>
+    <tr><td><b>0 · Prove it</b></td><td>~2 weeks</td><td>Hinglish/Hindi eval set (~50 h); ASR vendor bake-off; end-to-end pipeline spike (link → clips); caption render parity prototype; cost model.</td><td>ASR chosen; TTFC &lt; 5 min on 60-min source; cost/clip ≤ ₹3 path; render parity proven.</td></tr>
+    <tr><td><b>1 · MVP</b></td><td>~6–8 weeks</td><td>All P0 requirements; Android + iOS internal builds via EAS; closed beta with 30–50 clippers &amp; podcasters.</td><td>Activation ≥ 40%, keep rate ≥ 35%, pipeline success ≥ 98%, crash-free ≥ 99.5%.</td></tr>
+    <tr><td><b>Public launch</b></td><td>After beta</td><td>Store listings (Play first, App Store same week), pricing live, Hindi tutorials, creator affiliate programme.</td><td>Store approval; support load manageable.</td></tr>
+    <tr><td><b>2 · Retention</b></td><td>Ongoing</td><td>Reprompt, filler removal, brand presets, direct posting &amp; scheduling, agency/batch mode, Hindi UI.</td><td>W4 retention ≥ 25%; paid conversion ≥ 6%.</td></tr>
+    <tr><td><b>3 · Expand</b></td><td>Later</td><td>Regional languages (Marathi, Bengali, Tamil, Telugu, Gujarati, Punjabi…), insights loop, learned ranker.</td><td>Ranker beats LLM-only keep rate.</td></tr>
+  </table>
+
+  <h2>3.9 Risks &amp; open questions</h2>
+  <table>
+    <tr><th style="width:26%">Risk / question</th><th>Mitigation / decision needed</th><th style="width:14%">Owner</th></tr>
+    <tr><td><b>YouTube link ingest</b> — ToS, cloud IP blocking, clippers using others' content</td><td>Rights confirmation; upload fallback; respect takedowns; decide policy on clipping third-party content.</td><td>Founder (policy) · Tech</td></tr>
+    <tr><td><b>Unit economics</b></td><td>Phase 0 measures cost per stage; render only on export; cache transcripts; pick cost-efficient ASR.</td><td>Tech</td></tr>
+    <tr><td><b>Hinglish ASR quality</b></td><td>Data-driven vendor choice on our eval set; brand vocabulary; fast word-fix UX.</td><td>Tech</td></tr>
+    <tr><td><b>Platform risk</b> (YouTube/Meta free clipping)</td><td>Cross-platform workflow, agency features, India-tuned selection quality.</td><td>Founder · Tech</td></tr>
+    <tr><td><b>Store billing</b></td><td>IAP + Play Billing; validate user-choice billing for UPI; model store fees.</td><td>Tech · Founder</td></tr>
+    <tr><td>Open: cloud provider &amp; budget</td><td>Recommendation in §4.9; needs sign-off.</td><td>Founder</td></tr>
+    <tr><td>Open: bundle ID, brand assets, legal entity for payments</td><td>Needed before store submission.</td><td>Founder</td></tr>
+  </table>
+</section>
+
+<!-- ======================= PART 4 ARCHITECTURE ======================= -->
+<section class="break">
+  <div class="part"><span class="num">04</span><h1>Technical architecture</h1></div>
+  <h2>4.1 System overview</h2>
+  <svg width="680" height="470" viewBox="0 0 680 470" font-size="9.5">
+    <defs><marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8A8A98"/></marker></defs>
+    <!-- client -->
+    <rect x="0" y="0" width="200" height="132" rx="12" fill="#FFF1E7" stroke="#FF7A1A" stroke-width="1.5"/>
+    <text x="12" y="20" font-weight="800" font-size="11">Mobile app</text><text x="12" y="34" fill="#8A4A1A" font-weight="600">Expo SDK 57 · React Native · TS</text>
+    <text x="12" y="54">• Skia caption &amp; layout preview</text><text x="12" y="68">• Clip Spec store (local-first)</text><text x="12" y="82">• Resumable upload (tus)</text><text x="12" y="96">• Push · Live Activity · notif.</text><text x="12" y="110">• Store billing (IAP / Play)</text><text x="12" y="124">• Share intents (Reels/Shorts/WA)</text>
+    <!-- api -->
+    <rect x="240" y="0" width="200" height="132" rx="12" fill="#F4F1FF" stroke="#7B5CFF" stroke-width="1.5"/>
+    <text x="252" y="20" font-weight="800" font-size="11">API service</text><text x="252" y="34" fill="#5B3FD6" font-weight="600">TypeScript · Hono · Zod</text>
+    <text x="252" y="54">• Auth (JWT) · projects · clips</text><text x="252" y="68">• Clip Spec CRUD + versions</text><text x="252" y="82">• Signed upload/download URLs</text><text x="252" y="96">• Billing ledger · webhooks</text><text x="252" y="110">• Job orchestration (enqueue)</text><text x="252" y="124">• Rate limits · idempotency keys</text>
+    <!-- data -->
+    <rect x="480" y="0" width="200" height="132" rx="12" fill="#ECFDF3" stroke="#22C55E" stroke-width="1.5"/>
+    <text x="492" y="20" font-weight="800" font-size="11">Data plane</text><text x="492" y="34" fill="#15803D" font-weight="600">Supabase (proposed)</text>
+    <text x="492" y="54">• Postgres (projects, clips, ledger)</text><text x="492" y="68">• Auth (Google, phone OTP, Apple)</text><text x="492" y="82">• Realtime (clips stream to app)</text><text x="492" y="96">• Redis: queues, cache, locks</text><text x="492" y="110">• Object storage (R2/S3) + CDN</text><text x="492" y="124">  sources · audio · renders</text>
+    <!-- arrows top -->
+    <path d="M202 50h34" stroke="#8A8A98" stroke-width="1.5" marker-end="url(#a2)"/><text x="206" y="44" font-size="8" fill="#8A8A98">HTTPS</text>
+    <path d="M442 50h34" stroke="#8A8A98" stroke-width="1.5" marker-end="url(#a2)"/>
+    <path d="M580 134 C 580 160, 120 150, 100 134" stroke="#22C55E" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#a2)"/><text x="300" y="160" font-size="8" fill="#15803D">Realtime: clip_ready events → app</text>
+    <!-- queue -->
+    <rect x="160" y="182" width="360" height="40" rx="10" fill="#14141A"/>
+    <text x="340" y="200" text-anchor="middle" fill="#fff" font-weight="800" font-size="10.5">Job orchestrator / queue</text>
+    <text x="340" y="214" text-anchor="middle" fill="#C9C9D6" font-size="8.5">per-stage jobs · retries · priorities · chunk fan-out · cost metering</text>
+    <path d="M340 134v44" stroke="#8A8A98" stroke-width="1.5" marker-end="url(#a2)"/>
+    <!-- workers -->
+    <g>
+      <rect x="0" y="252" width="124" height="96" rx="10" fill="#fff" stroke="#14141A"/><text x="10" y="270" font-weight="800">1 · Ingest</text><text x="10" y="286">link fetch / upload</text><text x="10" y="299">probe, audio extract</text><text x="10" y="312">chunk (2–5 min)</text><text x="10" y="325">proxy video</text><text x="10" y="340" fill="#8A8A98" font-size="8">CPU · ffmpeg</text>
+      <rect x="139" y="252" width="124" height="96" rx="10" fill="#fff" stroke="#14141A"/><text x="149" y="270" font-weight="800">2 · Speech</text><text x="149" y="286">ASR + word times</text><text x="149" y="299">diarization</text><text x="149" y="312">transliterate/translate</text><text x="149" y="325">forced alignment</text><text x="149" y="340" fill="#8A8A98" font-size="8">vendor API or GPU</text>
+      <rect x="278" y="252" width="124" height="96" rx="10" fill="#fff" stroke="#14141A"/><text x="288" y="270" font-weight="800">3 · Highlights</text><text x="288" y="286">LLM over transcript</text><text x="288" y="299">genre prompts</text><text x="288" y="312">score · reason · title</text><text x="288" y="325">ranker (later)</text><text x="288" y="340" fill="#8A8A98" font-size="8">LLM API</text>
+      <rect x="417" y="252" width="124" height="96" rx="10" fill="#fff" stroke="#14141A"/><text x="427" y="270" font-weight="800">4 · Reframe</text><text x="427" y="286">face + active speaker</text><text x="427" y="299">scene cuts</text><text x="427" y="312">crop keyframes</text><text x="427" y="325">layout per scene</text><text x="427" y="340" fill="#8A8A98" font-size="8">CPU/GPU · vision</text>
+      <rect x="556" y="252" width="124" height="96" rx="10" fill="#fff" stroke="#14141A"/><text x="566" y="270" font-weight="800">5 · Render</text><text x="566" y="286">Clip Spec → MP4</text><text x="566" y="299">libass + HarfBuzz</text><text x="566" y="312">on export only</text><text x="566" y="325">→ storage + CDN</text><text x="566" y="340" fill="#8A8A98" font-size="8">CPU · ffmpeg</text>
+    </g>
+    <g stroke="#8A8A98" stroke-width="1.2" marker-end="url(#a2)">
+      <path d="M200 224 L62 250"/><path d="M270 224 L201 250"/><path d="M340 224 L340 250"/><path d="M410 224 L479 250"/><path d="M480 224 L618 250"/>
+    </g>
+    <!-- external -->
+    <text x="0" y="384" font-weight="800" font-size="10.5">External services</text>
+    <g font-size="9">
+      <rect x="0" y="394" width="160" height="62" rx="10" fill="#F6F6F9" stroke="#E6E6EC"/><text x="10" y="412" font-weight="700">ASR vendor(s)</text><text x="10" y="426" fill="#4A4A57">chosen by Phase 0 bake-off</text><text x="10" y="440" fill="#4A4A57">Sarvam · ElevenLabs · Deepgram</text><text x="10" y="452" fill="#4A4A57">Google · self-hosted Whisper</text>
+      <rect x="173" y="394" width="160" height="62" rx="10" fill="#F6F6F9" stroke="#E6E6EC"/><text x="183" y="412" font-weight="700">LLM</text><text x="183" y="426" fill="#4A4A57">Claude (selection, titles,</text><text x="183" y="440" fill="#4A4A57">hooks, captions, reprompt)</text>
+      <rect x="346" y="394" width="160" height="62" rx="10" fill="#F6F6F9" stroke="#E6E6EC"/><text x="356" y="412" font-weight="700">Payments</text><text x="356" y="426" fill="#4A4A57">App Store IAP · Play Billing</text><text x="356" y="440" fill="#4A4A57">Razorpay (UPI AutoPay, web)</text><text x="356" y="452" fill="#4A4A57">RevenueCat (entitlements)</text>
+      <rect x="519" y="394" width="161" height="62" rx="10" fill="#F6F6F9" stroke="#E6E6EC"/><text x="529" y="412" font-weight="700">Platform services</text><text x="529" y="426" fill="#4A4A57">Expo push · FCM · APNs</text><text x="529" y="440" fill="#4A4A57">EAS Build/Update · Sentry</text><text x="529" y="452" fill="#4A4A57">PostHog analytics</text>
+    </g>
+  </svg>
+  <p class="small muted">Vendor names in "External services" are candidates. Final choices are logged in §4.11 once measured. The system is designed to be vendor-swappable at each stage via a provider interface.</p>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">4.2 The clip pipeline (streaming)</h2>
+  <p>A 60-minute source is split into overlapping audio chunks as soon as bytes arrive. Each chunk is transcribed independently; the highlight stage runs over a sliding window of finished transcript (with context from neighbours), so the first clips appear long before the whole episode is processed.</p>
+  <svg width="680" height="250" viewBox="0 0 680 250" font-size="9">
+    <g fill="#8A8A98" font-size="8"><text x="120" y="14">0 min</text><text x="230" y="14">2</text><text x="340" y="14">4</text><text x="450" y="14">6</text><text x="560" y="14">8</text><text x="650" y="14">10</text></g>
+    <g stroke="#E6E6EC"><path d="M120 20v200M230 20v200M340 20v200M450 20v200M560 20v200"/></g>
+    <g font-weight="700"><text x="0" y="44">Ingest / fetch</text><text x="0" y="78">Audio chunks</text><text x="0" y="112">ASR (parallel)</text><text x="0" y="146">Highlights</text><text x="0" y="180">Reframe</text><text x="0" y="214">Client</text></g>
+    <rect x="120" y="32" width="150" height="16" rx="4" fill="#FF7A1A"/>
+    <g fill="#FFB27A"><rect x="140" y="66" width="20" height="16" rx="3"/><rect x="164" y="66" width="20" height="16" rx="3"/><rect x="188" y="66" width="20" height="16" rx="3"/><rect x="212" y="66" width="20" height="16" rx="3"/><rect x="236" y="66" width="20" height="16" rx="3"/><rect x="260" y="66" width="20" height="16" rx="3"/></g>
+    <g fill="#7B5CFF"><rect x="150" y="100" width="60" height="16" rx="3"/><rect x="175" y="100" width="60" height="16" rx="3" opacity=".8"/><rect x="200" y="100" width="60" height="16" rx="3" opacity=".7"/><rect x="225" y="100" width="70" height="16" rx="3" opacity=".6"/><rect x="250" y="100" width="80" height="16" rx="3" opacity=".5"/><rect x="275" y="100" width="90" height="16" rx="3" opacity=".4"/></g>
+    <g fill="#14141A"><rect x="230" y="134" width="70" height="16" rx="3"/><rect x="305" y="134" width="70" height="16" rx="3" opacity=".8"/><rect x="380" y="134" width="90" height="16" rx="3" opacity=".6"/></g>
+    <g fill="#22C55E"><rect x="300" y="168" width="40" height="16" rx="3"/><rect x="375" y="168" width="40" height="16" rx="3" opacity=".8"/><rect x="470" y="168" width="60" height="16" rx="3" opacity=".6"/></g>
+    <path d="M335 196 v24" stroke="#FF2E7E" stroke-width="2"/><circle cx="335" cy="208" r="5" fill="#FF2E7E"/>
+    <text x="345" y="212" font-weight="800" fill="#FF2E7E">First clips visible (target &lt; 5 min)</text>
+    <path d="M530 196 v24" stroke="#22C55E" stroke-width="2"/><text x="540" y="212" font-weight="700" fill="#15803D">All clips ready</text>
+    <text x="0" y="244" fill="#8A8A98" font-size="8">Illustrative timing for a 60-min Hinglish podcast; real numbers come from the Phase 0 spike.</text>
+  </svg>
+  <h3>Stage details</h3>
+  <table>
+    <tr><th style="width:16%">Stage</th><th>What it does</th><th style="width:28%">Key choices</th></tr>
+    <tr><td><b>Ingest</b></td><td>Fetch link or assemble resumable upload; ffprobe; extract 16 kHz mono audio; cut into 2–5 min chunks with overlap; create 360p/540p proxy for client preview.</td><td>Proxy streamed via CDN (HLS) so the phone never downloads the original.</td></tr>
+    <tr><td><b>Speech</b></td><td>Per-chunk ASR with word timestamps; merge overlaps; diarize speakers; forced alignment for tight caption timing; produce canonical script + Roman + Devanagari + English layers.</td><td>Provider interface; transliteration via model/LLM; brand vocabulary as ASR hints and post-correction.</td></tr>
+    <tr><td><b>Highlights</b></td><td>Sliding window over transcript (+ speaker turns, pauses, laughter) → candidate segments with start/end on word boundaries, score, Hook/Flow/Value, reason, title, tags; de-duplicate; enforce coverage across the episode.</td><td>LLM with genre prompts + structured output; later a learned ranker on keep/discard + post performance.</td></tr>
+    <tr><td><b>Reframe</b></td><td>Sample frames; face detection + tracking; active-speaker via audio–visual correlation; scene cut detection; emit crop keyframes and per-scene layout (solo/split/fit).</td><td>Runs only on candidate clip ranges, not the full video (cost).</td></tr>
+    <tr><td><b>Render</b></td><td>On export: cut source ranges, apply crop/layout, burn captions (ASS via libass + HarfBuzz) and overlays, encode H.264/AAC, upload, notify.</td><td>Deterministic from Clip Spec → identical to preview; cached by spec hash.</td></tr>
+  </table>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">4.3 Clip Spec — the single source of truth</h2>
+  <p>Every clip is a versioned JSON document. The app renders it live (Skia over the proxy video); the render worker turns the same document into an MP4. Editing, undo/redo, templates, presets and reprompts are all operations on this document.</p>
+<pre><span class="c">// ClipSpec v1 (abridged)</span>
+{
+  <span class="k">"id"</span>: <span class="s">"clp_7Hk2"</span>, <span class="k">"projectId"</span>: <span class="s">"prj_42"</span>, <span class="k">"version"</span>: 14,
+  <span class="k">"aspect"</span>: <span class="s">"9:16"</span>,
+  <span class="k">"segments"</span>: [ { <span class="k">"src"</span>: <span class="s">"src_main"</span>, <span class="k">"in"</span>: 751.20, <span class="k">"out"</span>: 799.48 } ],      <span class="c">// up to 3 stitched ranges</span>
+  <span class="k">"cuts"</span>: [ { <span class="k">"from"</span>: 752.10, <span class="k">"to"</span>: 752.62, <span class="k">"reason"</span>: <span class="s">"filler"</span> } ],      <span class="c">// word deletions</span>
+  <span class="k">"captions"</span>: {
+    <span class="k">"script"</span>: <span class="s">"roman"</span>,            <span class="c">// roman | devanagari | bilingual</span>
+    <span class="k">"templateId"</span>: <span class="s">"desi-pop"</span>, <span class="k">"wordsPerLine"</span>: 3, <span class="k">"position"</span>: { <span class="k">"x"</span>: 0.5, <span class="k">"y"</span>: 0.72, <span class="k">"scale"</span>: 1.0 },
+    <span class="k">"words"</span>: [ { <span class="k">"t0"</span>: 753.04, <span class="k">"t1"</span>: 753.31, <span class="k">"spk"</span>: <span class="s">"B"</span>,
+                 <span class="k">"text"</span>: { <span class="k">"roman"</span>: <span class="s">"paisa"</span>, <span class="k">"devanagari"</span>: <span class="s">"पैसा"</span>, <span class="k">"en"</span>: <span class="s">"money"</span> },
+                 <span class="k">"style"</span>: { <span class="k">"emphasis"</span>: <span class="k">true</span>, <span class="k">"color"</span>: <span class="s">"#FFD23F"</span> } } ],
+    <span class="k">"lineBreaks"</span>: [ 3, 7, 11 ], <span class="k">"overrides"</span>: { <span class="s">"line:2"</span>: { <span class="k">"templateId"</span>: <span class="s">"box-bold"</span> } }
+  },
+  <span class="k">"layout"</span>: { <span class="k">"mode"</span>: <span class="s">"auto"</span>, <span class="k">"followSpeaker"</span>: <span class="k">true</span>,
+    <span class="k">"scenes"</span>: [ { <span class="k">"t0"</span>: 751.2, <span class="k">"t1"</span>: 770.0, <span class="k">"type"</span>: <span class="s">"split"</span>, <span class="k">"crops"</span>: [<span class="s">"cropA"</span>, <span class="s">"cropB"</span>] } ],
+    <span class="k">"cropTracks"</span>: { <span class="k">"cropA"</span>: [ { <span class="k">"t"</span>: 751.2, <span class="k">"x"</span>: 0.31, <span class="k">"y"</span>: 0.40, <span class="k">"w"</span>: 0.32 } ] } },
+  <span class="k">"hook"</span>: { <span class="k">"text"</span>: <span class="s">"Paisa bachana nahi, kamana seekho"</span>, <span class="k">"style"</span>: <span class="s">"banner-top"</span>, <span class="k">"until"</span>: 3.0 },
+  <span class="k">"audio"</span>: { <span class="k">"denoise"</span>: <span class="k">false</span>, <span class="k">"music"</span>: <span class="k">null</span> },
+  <span class="k">"ai"</span>: { <span class="k">"score"</span>: 92, <span class="k">"grades"</span>: { <span class="k">"hook"</span>: <span class="s">"A"</span>, <span class="k">"flow"</span>: <span class="s">"A-"</span>, <span class="k">"value"</span>: <span class="s">"B+"</span> },
+          <span class="k">"reason"</span>: <span class="s">"Contrarian money take, payoff in 41s"</span>, <span class="k">"tags"</span>: [<span class="s">"money"</span>, <span class="s">"career"</span>] }
+}</pre>
+  <div class="grid2">
+    <div class="card"><h4>Why a spec, not a timeline file</h4><ul class="small"><li>Instant, free edits (no server round-trip to see a change).</li><li>Preview/export parity: one schema, two renderers, golden-image tests.</li><li>Render caching by spec hash; re-exports cost nothing.</li><li>Script switch = change one field; all three layers already stored.</li></ul></div>
+    <div class="card"><h4>Sync model</h4><ul class="small"><li>Local-first: edits applied to a local copy (MMKV/SQLite), queued, synced with optimistic concurrency (<code>version</code>).</li><li>Server stores full versions for undo history &amp; support.</li><li>Conflicts (rare, single user) resolved last-writer-wins per field group.</li></ul></div>
+  </div>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">4.4 Mobile app architecture</h2>
+  <table>
+    <tr><th style="width:22%">Concern</th><th>Choice</th><th style="width:30%">Notes</th></tr>
+    <tr><td>Framework</td><td>Expo SDK 57, React Native 0.86, TypeScript, Expo Router (file-based), React Compiler</td><td>Already scaffolded in repo; dev builds (not Expo Go) because of native modules.</td></tr>
+    <tr><td>Video playback</td><td><code>expo-video</code> playing CDN HLS proxy; frame-accurate seeking</td><td>Never download the original to the phone.</td></tr>
+    <tr><td>Caption/overlay preview</td><td><code>@shopify/react-native-skia</code> canvas synced to player clock; Indic text via Skia Paragraph (HarfBuzz shaping)</td><td>Parity tests against server render.</td></tr>
+    <tr><td>Gestures &amp; animation</td><td>react-native-gesture-handler, Reanimated 4 (worklets)</td><td>Drag/pinch captions, swipe review pager, trim handles.</td></tr>
+    <tr><td>State</td><td>Zustand (editor/Clip Spec with undo stack) + TanStack Query (server state)</td><td>Command pattern for undo/redo.</td></tr>
+    <tr><td>Local storage</td><td>MMKV for prefs/drafts; SQLite (expo-sqlite) for offline edit queue</td><td>Edits survive app kill.</td></tr>
+    <tr><td>Uploads</td><td>tus resumable uploads with background tasks; on-device compression (expo-video / native transcoder) for &gt; 1080p</td><td>Resume across network drops and restarts.</td></tr>
+    <tr><td>Realtime &amp; notifications</td><td>Supabase Realtime subscription per project; expo-notifications (FCM/APNs); Android foreground-service notification; iOS Live Activity (native module)</td><td>Progressive clip delivery.</td></tr>
+    <tr><td>Share</td><td>Native share intents to Instagram/YouTube/WhatsApp; save to gallery (expo-media-library)</td><td>Direct posting APIs in Phase 2.</td></tr>
+    <tr><td>Payments</td><td>RevenueCat (IAP + Play Billing entitlements); server-side ledger is the source of truth</td><td>User-choice billing / UPI to validate.</td></tr>
+    <tr><td>Quality</td><td>Sentry (crash/ANR), PostHog (analytics, flags), EAS Build/Submit/Update, Maestro E2E, Jest unit tests</td><td>OTA updates for JS fixes.</td></tr>
+    <tr><td>i18n</td><td>English + Hindi UI strings (i18next); Noto Sans + Noto Sans Devanagari bundled</td><td>Regional scripts later.</td></tr>
+  </table>
+  <h3>App structure (planned)</h3>
+<pre>src/
+  app/                 <span class="c"># Expo Router routes</span>
+    (onboarding)/      <span class="c"># persona, language, sign-in</span>
+    (tabs)/            <span class="c"># home, projects, styles, me</span>
+    project/[id]/      <span class="c"># processing, results, review (swipe)</span>
+    clip/[id]/         <span class="c"># editor: transcript, style, layout, hook, audio</span>
+    export/            <span class="c"># export & share sheet</span>
+    paywall.tsx
+  features/            <span class="c"># ingest, review, editor, export, billing (UI + hooks)</span>
+  engine/              <span class="c"># clip-spec schema (zod), ops, undo stack, skia renderer</span>
+  services/            <span class="c"># api client, realtime, uploads, notifications, analytics</span>
+  ui/                  <span class="c"># design system: tokens, buttons, sheets, chips</span></pre>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">4.5 Backend services</h2>
+  <table>
+    <tr><th style="width:20%">Service</th><th>Responsibility</th><th style="width:26%">Tech</th></tr>
+    <tr><td><b>API</b></td><td>Auth verification, projects/sources/clips/specs CRUD, signed URLs, billing ledger &amp; entitlements, webhooks (payments, providers), job enqueueing, rate limiting.</td><td>TypeScript, Hono, Zod, Drizzle ORM, Postgres</td></tr>
+    <tr><td><b>Orchestrator</b></td><td>Durable per-project workflow: stage dependencies, chunk fan-out/fan-in, retries with backoff, timeouts, cost metering, priority queues (Pro).</td><td>BullMQ on Redis (MVP) → Temporal if workflows outgrow it</td></tr>
+    <tr><td><b>Ingest worker</b></td><td>Link fetch, upload assembly, ffprobe, audio extraction, chunking, proxy HLS.</td><td>Python/Node + ffmpeg, CPU</td></tr>
+    <tr><td><b>Speech worker</b></td><td>Calls ASR provider(s) per chunk, merges, diarizes, aligns, transliterates/translates.</td><td>Python; provider adapters</td></tr>
+    <tr><td><b>Highlight worker</b></td><td>Windowed LLM selection with structured outputs; dedupe; scoring; titles, hooks, tags, social captions; reprompt handling.</td><td>Python/TS; Claude API</td></tr>
+    <tr><td><b>Vision worker</b></td><td>Face detection/tracking, active speaker, scene cuts, crop keyframes for candidate ranges.</td><td>Python; ONNX/MediaPipe; CPU first, GPU if needed</td></tr>
+    <tr><td><b>Render worker</b></td><td>Clip Spec → ASS subtitles + ffmpeg filter graph → MP4; upload; cache by spec hash.</td><td>ffmpeg + libass + HarfBuzz, CPU autoscaling</td></tr>
+    <tr><td><b>Notifier</b></td><td>Realtime events, push notifications, emails (receipts).</td><td>Supabase Realtime, Expo Push</td></tr>
+  </table>
+
+  <h2>4.6 Data model (core tables)</h2>
+  <table>
+    <tr><th style="width:20%">Table</th><th>Key fields</th></tr>
+    <tr><td>users</td><td>id, phone/email, persona, genres[], primary_language, default_settings jsonb, created_at</td></tr>
+    <tr><td>workspaces / members</td><td>id, owner_id, name, plan, brand_presets jsonb · (workspace_id, user_id, role) — agency mode</td></tr>
+    <tr><td>projects</td><td>id, workspace_id, source_type (link/upload), source_url, title, duration_s, language, script, genre, settings jsonb, status, stage_progress jsonb, error, created_at</td></tr>
+    <tr><td>media_assets</td><td>id, project_id, kind (original/audio/proxy/chunk/render), storage_key, bytes, codec, expires_at</td></tr>
+    <tr><td>transcripts</td><td>project_id, version, words (jsonb or columnar file in storage), speakers, layers (roman/deva/en), vendor, cost</td></tr>
+    <tr><td>clips</td><td>id, project_id, rank, score, grades, reason, title, tags[], status (new/kept/discarded/exported), spec jsonb, spec_version, prompt_id</td></tr>
+    <tr><td>clip_spec_versions</td><td>clip_id, version, spec jsonb, created_by, created_at</td></tr>
+    <tr><td>exports</td><td>id, clip_id, spec_hash, resolution, status, storage_key, cost_clips, completed_at</td></tr>
+    <tr><td>ledger</td><td>id, workspace_id, delta_clips, reason (grant/purchase/export/refund/rollover), ref_id, created_at — append-only</td></tr>
+    <tr><td>subscriptions / purchases</td><td>workspace_id, store (apple/google/razorpay), product_id, status, period_end, raw jsonb</td></tr>
+    <tr><td>vocabulary</td><td>workspace_id, term, preferred_roman, preferred_deva — brand spellings</td></tr>
+    <tr><td>feedback / events</td><td>clip_id, action (keep/discard/edit/post), metadata — training signal (consented)</td></tr>
+  </table>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">4.7 API (v1, abridged)</h2>
+  <table class="mono" style="font-size:7.8pt">
+    <tr><th style="width:38%">Endpoint</th><th>Purpose</th></tr>
+    <tr><td>POST /v1/sources/resolve</td><td>Validate link → title, duration, thumbnail, est. clips</td></tr>
+    <tr><td>POST /v1/uploads</td><td>Create resumable (tus) upload; returns upload URL</td></tr>
+    <tr><td>POST /v1/projects</td><td>Create project from source + settings (Idempotency-Key)</td></tr>
+    <tr><td>GET /v1/projects/:id</td><td>Status, stage progress, ETA</td></tr>
+    <tr><td>GET /v1/projects/:id/clips</td><td>Ranked clips (cursor paging, filters)</td></tr>
+    <tr><td>POST /v1/projects/:id/reprompt</td><td>"More clips about…" using cached transcript</td></tr>
+    <tr><td>PATCH /v1/clips/:id</td><td>Status keep/discard; spec patch (JSON Patch + version)</td></tr>
+    <tr><td>GET /v1/clips/:id/spec?v=</td><td>Fetch spec version</td></tr>
+    <tr><td>POST /v1/exports</td><td>Export clip ids → charge ledger, enqueue render</td></tr>
+    <tr><td>GET /v1/exports/:id</td><td>Render status + signed download URL</td></tr>
+    <tr><td>GET /v1/me/balance · /v1/me/ledger</td><td>Clip balance, full usage history</td></tr>
+    <tr><td>POST /v1/webhooks/{revenuecat,razorpay}</td><td>Entitlement &amp; payment events</td></tr>
+    <tr><td>realtime: project:{id}</td><td>stage_progress, clip_ready, project_done, export_done</td></tr>
+  </table>
+
+  <h2>4.8 ML strategy &amp; evaluation</h2>
+  <div class="grid2">
+    <div class="card"><h4>ASR bake-off (Phase 0)</h4><ul class="small">
+      <li><b>Eval set:</b> ~50 h of real Hinglish/Hindi podcasts, talks, katha, news; 2–3 speakers; varied mics and noise. Human-verified transcripts for a 5 h subset.</li>
+      <li><b>Metrics:</b> WER/CER (Roman &amp; Devanagari), code-switch accuracy, proper-noun accuracy, word-timestamp error (ms), diarization error rate, latency, cost/hour.</li>
+      <li><b>Candidates:</b> Sarvam, ElevenLabs Scribe, Deepgram, Google Chirp, self-hosted Whisper large-v3 variants / AI4Bharat models.</li>
+    </ul></div>
+    <div class="card"><h4>Clip selection</h4><ul class="small">
+      <li><b>v1:</b> LLM over windowed, diarized transcript with genre prompts; structured output; rules for boundaries (complete thought, no cut punchline, hook in first 3 s).</li>
+      <li><b>Offline eval:</b> overlap with human-picked clips on the eval set; "postable" rate from blind reviewers.</li>
+      <li><b>Online:</b> keep rate, export rate, post performance.</li>
+      <li><b>v2:</b> learned ranker on consented keep/discard + views data → India-tuned virality model (moat).</li>
+    </ul></div>
+    <div class="card"><h4>Transliteration &amp; translation</h4><ul class="small">
+      <li>Every word stored in Roman, Devanagari and (line-level) English.</li>
+      <li>Consistent Hinglish spellings via normalisation table + brand vocabulary.</li>
+    </ul></div>
+    <div class="card"><h4>Reframe</h4><ul class="small">
+      <li>Face detection + tracking with temporal smoothing; active speaker by lip-motion/audio correlation.</li>
+      <li>Eval: % frames with speaker in safe area; jitter metric; manual review set incl. handheld &amp; gaming footage.</li>
+    </ul></div>
+  </div>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">4.9 Infrastructure, cost &amp; scale</h2>
+  <h3>Proposed stack (needs sign-off)</h3>
+  <table>
+    <tr><th style="width:24%">Layer</th><th>Proposal</th><th style="width:30%">Why</th></tr>
+    <tr><td>Database, auth, realtime</td><td>Supabase (Postgres + Auth + Realtime), Mumbai region</td><td>Fast to build; Realtime fits progressive clips; team already uses Supabase.</td></tr>
+    <tr><td>Object storage + CDN</td><td>Cloudflare R2 + CDN (or S3 + CloudFront)</td><td>Video egress is the big cost; R2 has no egress fees.</td></tr>
+    <tr><td>API</td><td>Containers on Fly.io / Cloud Run / ECS in Mumbai</td><td>Low latency to Indian users.</td></tr>
+    <tr><td>Workers</td><td>Autoscaling container pools (CPU for ingest/render; GPU pool only if self-hosting ASR/vision)</td><td>Scale to zero off-peak; spot instances for render.</td></tr>
+    <tr><td>Queue</td><td>Redis (Upstash/managed) + BullMQ</td><td>Simple, proven; migrate to Temporal if needed.</td></tr>
+    <tr><td>Mobile delivery</td><td>EAS Build / Submit / Update</td><td>Matches Expo stack; OTA fixes.</td></tr>
+  </table>
+  <h3>Unit cost model (to be filled by Phase 0)</h3>
+  <p class="small">Cost per exported clip = (ingest + ASR + LLM selection + reframe on candidates) ÷ clips exported per project + render + storage/egress + store fee share. Levers: render only on export, reframe only candidate ranges, cache transcripts (reprompt is LLM-only), proxy streaming instead of originals, retention auto-delete. <b>Target ≤ ₹3 per exported clip</b> so that ₹299 for 100 clips carries healthy gross margin after store fees.</p>
+  <h3>Scale assumptions (beta → launch)</h3>
+  <table>
+    <tr><th>Assumption</th><th>Beta</th><th>Launch +3 months (illustrative)</th></tr>
+    <tr><td>Hours of source processed / day</td><td>50</td><td>2,000</td></tr>
+    <tr><td>Concurrent projects (peak)</td><td>10</td><td>300</td></tr>
+    <tr><td>Clips exported / day</td><td>500</td><td>20,000</td></tr>
+    <tr><td>Storage (30-day retention)</td><td>~2 TB</td><td>~80 TB</td></tr>
+  </table>
+
+  <h2>4.10 Security &amp; privacy</h2>
+  <ul class="small">
+    <li>TLS 1.2+ everywhere; at-rest encryption for DB and storage; secrets in a managed vault; no secrets in the app bundle.</li>
+    <li>Short-lived signed URLs for all media; per-workspace access checks on every object; Postgres row-level security.</li>
+    <li>Data retention: originals and renders auto-deleted after 30 days (configurable); transcripts kept for re-editing until project deletion; account deletion purges within 30 days.</li>
+    <li>User content is not used for model training without explicit opt-in; vendor DPAs reviewed (ASR, LLM).</li>
+    <li>DPDP Act readiness: consent records, purpose limitation, grievance contact; accurate App Store/Play data-safety labels.</li>
+    <li>Abuse &amp; rights: rights confirmation, takedown process, rate limits per account/IP, payment fraud checks.</li>
+  </ul>
+</section>
+
+<section class="break">
+  <h2 style="margin-top:0">4.11 Decision log</h2>
+  <table>
+    <tr><th style="width:14%">Date</th><th>Decision</th><th style="width:16%">Status</th></tr>
+    <tr><td>2026-10-05</td><td>Mobile stack: Expo SDK 57, React Native 0.86, TypeScript, Expo Router.</td><td>Done</td></tr>
+    <tr><td>2026-10-05</td><td>Strategy: Hinglish podcasts + clippers wedge; Android-first with iOS in parallel; pay per exported clip.</td><td>Adopted</td></tr>
+    <tr><td>2026-10-05</td><td>Architecture: Clip Spec as source of truth; on-device preview, render only on export; streaming pipeline.</td><td>Proposed</td></tr>
+    <tr><td>Phase 0</td><td>ASR vendor, LLM prompts/models, reframe approach, caption renderer parity.</td><td>Pending data</td></tr>
+    <tr><td>Founder</td><td>Cloud provider &amp; budget; YouTube-link policy for clippers; bundle ID; payments entity.</td><td>Pending</td></tr>
+  </table>
+
+  <h2>Appendix — competitive evidence (summary)</h2>
+  <table>
+    <tr><th style="width:18%">Competitor</th><th>Key facts used in this document</th></tr>
+    <tr><td>OpusClip</td><td>Help center: Hindi not supported; 25 non-Indic languages; iOS editor captions-only; Android no editor, 2.8★; ClipAnything 20–40 min; free projects expire in 3 days; credits per source minute.</td></tr>
+    <tr><td>Captions (Mirage)</td><td>Hindi, Hinglish + 10 Indic languages; AI Shorts up to ~1 hr; India pricing ₹599/wk, ₹969–2,999/mo; Android Lite 3.5★ with 5-min limit; opaque credit complaints.</td></tr>
+    <tr><td>Kalakar</td><td>21 languages with Native/Roman; captioning only; 2–5 min video caps (Free/Editor/Creator); Android app since Jul 2026 (~5K installs); no iOS; best-in-class word menu; mobile sheets hide preview.</td></tr>
+    <tr><td>VN</td><td>#2 Photo &amp; Video on India App Store; 2.1M India ratings; no content-aware clipping; English-first captions; top complaints: audio on export, export failures, crashes; foreground-only export.</td></tr>
+    <tr><td>Market</td><td>CapCut banned in India; Josh stopped uploads; Moj pivoted to dramas; Meta/YouTube free captions &amp; dubbing; Hindi "podcast shorts" tutorials at 4–5M views; Whop clipping tutorials 376K–676K views.</td></tr>
+  </table>
+  <p class="small muted">Full sources: <code>docs/research/competitive-teardown.md</code>. Strategy: <code>docs/strategy.md</code>.</p>
+</section>
+
+</body>
+</html>

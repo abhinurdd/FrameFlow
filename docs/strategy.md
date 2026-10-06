@@ -1,0 +1,134 @@
+# FrameFlow Strategy
+
+**Owner of tech:** Claude (end to end).
+**Last updated:** 2026-10-05.
+**Evidence base:** [research/competitive-teardown.md](research/competitive-teardown.md).
+
+Living document. Update it when a decision is made or a phase finishes.
+
+## North star
+
+**Turn a Hindi/Hinglish podcast into 20 ready-to-post clips, from a phone, in minutes, for less than a chai a day.**
+
+We are not "OpusClip for India." We win one job better than anyone, then expand to more genres and languages.
+
+## 1. Where we start
+
+**Hinglish podcasts and clippers, Android first, with iOS shipped at the same time.**
+
+- **Clippers** (Whop and similar paid-clipping programs, fan-page operators, agencies) are the volume buyers.
+  - They process many hours a week and care about speed and price.
+  - They cluster on Discord, WhatsApp and Whop, so word of mouth spreads.
+  - They generate the most keep/discard data.
+- **Podcasters** (the Raj Shamani model: 30–50 clips a week) are the most visible use case and bring brand credibility.
+- **Later**, on the same engine with different genre presets: motivational, spiritual/devotional, educators and exam coaching, finance, news, comedy, then regional languages.
+
+## 2. How we beat each competitor
+
+| Competitor | Their weakness | Our advantage |
+|---|---|---|
+| OpusClip | No Hindi/Indic (their help center says so); 20–40 min processing; iOS editor is captions-only; Android has no editor (2.8★) | Hinglish-native, first clip in under 5 min, a full editor on Android |
+| Captions (Mirage) | Expensive in India (₹969–2,999/mo), AI Shorts can take up to an hour, opaque credits, Android Lite is 3.5★ with a 5-min cap | About 3x cheaper, cost shown up front, quality on Android |
+| Kalakar | Captions only, 2–5 min videos, the mobile app is a web wrapper, timing drift, the Hinglish setting is confusing | Clipping, plus a caption editor as good as theirs that is built for phones |
+| VN / Edits / YouTube Create | Manual editing, or no clipping of long videos | Fully automatic clipping and captions |
+
+**Biggest long-term threat:** YouTube and Meta building clipping in for free (YouTube's Gemini Shorts editor is due in 2027).
+
+**Defense:** be the cross-platform workflow tool. Post to every platform, and add agency and multi-account features that first-party tools won't build.
+
+## 3. What makes us hard to copy
+
+Features get copied in a quarter, so the edge has to come from these:
+
+1. **An India-tuned virality model trained on our own data.** Inputs are every keep/discard swipe and the performance of posted clips. OpusClip's score is built on Western content and only weakly predicts real views. Ours should improve with usage.
+2. **Indic caption craft.**
+   - Accurate Hinglish code-mixed ASR.
+   - Instant Devanagari / Roman / English toggle without regenerating.
+   - Correct text shaping for Indic scripts (conjuncts, matras).
+   - Fonts designed for each script.
+   - Hindi filler-word lists ("matlab", "toh", "na", "basically", "yaar").
+3. **A structural cost advantage.** Render only on export, and preview on the device. That lets us charge ₹2–5 per clip while others charge per source minute.
+4. **Shipping speed.** Match or beat VN's pace (6 releases in 3 months).
+
+## 4. Architecture
+
+### Principles
+- **Preview never waits for a render.** Cuts, captions, layout and reframe are drawn live on the device over the source video. A server render happens only on export.
+- **Clip Spec is the single source of truth.** Each clip is one JSON document (an edit decision list) holding cuts, a word-level caption track, styles, layout/reframe keyframes and overlays.
+  - The same spec drives the on-device preview and the server render.
+  - Undo/redo, reprompting, templates and brand presets are all just operations on the spec.
+- **Stream everything.** Transcribe chunks as they arrive. Push clips to the app as they are found. The target is a first clip in under 5 minutes.
+- **Cheap by design.** No GPU work unless it is needed. Cache transcripts. Re-prompting reuses the transcript and never re-runs ASR.
+
+### Client (Expo / React Native, `src/`)
+- Ingest:
+  - Paste a link, or "Share → FrameFlow" from the YouTube app.
+  - Chunked, resumable uploads (tus or similar) that run in the background.
+  - Optional compression on the device before upload.
+- Background progress: a Live Activity on iOS and an ongoing notification on Android. A push notification when clips are ready.
+- Results feed: a ranked grid plus a full-screen vertical **swipe review** (keep/discard).
+- Clip editor:
+  - The transcript is the timeline: delete words to cut, "Add a section" to pull in more of the source.
+  - Word tap menu: Emphasize, Spotlight, Edit, Search & Replace (with "remember spelling"), Split, move to previous/next line.
+  - Gesture styling on the canvas, with a split preview so sheets never hide the video.
+  - Layouts: Fill, Fit, Split, Screenshare.
+  - A hook headline.
+- Caption preview rendering: Skia (react-native-skia) or a similar engine, matching the server renderer.
+- Export: Auto/Manual with a file-size estimate. Share to Reels, Shorts and WhatsApp Status, or save to the gallery.
+- Needs a development build. Native modules mean Expo Go is not enough.
+
+### Backend (streaming pipeline)
+1. **Ingest:** a link fetch or chunked upload, then extract and normalize the audio.
+2. **ASR:** word-level timestamps plus speaker detection, run per chunk. Store a canonical transcript plus transliterations (Devanagari ↔ Roman, and an English translation).
+3. **Highlight selection:** an LLM reads the diarized transcript with genre-specific prompts and outputs segments, a reason, a hook title and a score (Hook/Flow/Value). Cheap visual signals (faces, scene changes) feed in. Later, a learned ranker trained on swipe and performance data.
+4. **Reframe:** face and active-speaker detection, producing 9:16 crop keyframes or split layouts.
+5. **Progressive delivery:** clips are pushed to the client as they are found.
+6. **Render on export:** FFmpeg workers with an Indic-aware text renderer (libass + HarfBuzz, or a renderer that shares code with the client), then storage and a CDN.
+
+### Decisions to make with data, not guesses
+- **ASR provider.** First build a **Hinglish/Hindi/regional test set of about 50 hours** from real podcasts. Then benchmark Sarvam, ElevenLabs Scribe, Whisper large-v3 variants, Deepgram and Google Chirp on WER and CER, code-mix handling, timestamp accuracy, diarization, cost per hour and latency.
+- **Highlight selection.** An LLM is enough for launch. Measure it against human-picked clips on the test set.
+- **Cloud and infrastructure.** Pending: the user's budget and provider preference.
+- **Caption renderer parity** between client and server. Prototype in Phase 0.
+
+## 5. Pricing and go-to-market
+
+- **Pricing:**
+  - A free tier with real value: a few clips a month, watermarked.
+  - A **₹99 week pass**, then ₹299 and ₹699 per month.
+  - **UPI AutoPay.**
+  - Charge per **exported** clip, not per source minute.
+  - Show the cost **before** processing.
+  - Clear reminders before a trial ends, one-tap cancel, a refund window.
+  - Human support on WhatsApp in Hindi and English.
+- **Distribution:**
+  - Hindi YouTube tutorials (this market learns from 4–5M-view tutorials).
+  - A clipper community on WhatsApp and Discord.
+  - An affiliate program with editing-education channels.
+  - Seeding with 3–5 Indian podcast networks.
+- **Trust is the pitch.** Opaque credits and billing traps are the top complaint across the category.
+
+## 6. Roadmap
+
+| Phase | Time | Exit criteria |
+|---|---|---|
+| **0. Prove it** | ~2 weeks | Hinglish test set built. ASR bakeoff done and a provider chosen. End-to-end pipeline spike with the first clip in under 5 min on a 60-min podcast. Unit cost per clip measured and compatible with ₹2–5 pricing. Caption render parity prototype. |
+| **1. Core loop (MVP)** | ~6–8 weeks | Link/upload → clips → swipe review → light edit → export/share on Android and iOS. INR pricing with UPI. Closed beta with 30–50 clippers and podcasters. |
+| **2. Retention** | After the MVP | Reprompt/chat ("3 more about money"), Hindi filler removal, brand presets, multi-account posting and scheduling, agency mode (batch links, many brands). |
+| **3. Expand** | Later | Regional languages, an insights loop (what performed, what to clip next), a learned ranker trained on our own data. |
+
+**Explicitly not doing:** generative video, AI avatars, dubbing (Meta and YouTube give it away), deep multi-track editing. Match VN's gestures, not its depth.
+
+## 7. Open risks and decisions (need the user)
+
+1. **YouTube link ingest.** It is against YouTube's terms, downloads are often blocked from cloud servers, and clippers frequently clip other people's content.
+   - Planned mitigation: rights confirmation at submit, an upload fallback.
+   - **Needs the user's stance on how far we go to serve clippers.**
+2. **Unit economics.** ASR, LLM and reframe cost per hour of source. Phase 0 must prove the margin before pricing is locked.
+3. **Platform risk.** YouTube or Meta shipping free clipping. Defense: cross-platform posting plus agency workflows.
+4. **Pending from the user:** cloud provider and budget, iOS/Android bundle ID, and the go-ahead for Phase 0.
+
+## Decision log
+
+- 2026-10-05: Stack is Expo SDK 57 + React Native 0.86 + TypeScript + Expo Router (repo initialized, not yet committed).
+- 2026-10-05: Strategy above adopted as the working plan.
