@@ -32,6 +32,13 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "FrameFlow needs access to your videos so you can edit them."
+        }
       ]
     ],
     "experiments": {

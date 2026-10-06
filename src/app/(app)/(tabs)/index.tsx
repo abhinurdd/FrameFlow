@@ -5,7 +5,11 @@ import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { pickVideos } from '@/editor/pick';
+import { duration } from '@/engine/types';
+import { totalDuration } from '@/engine/timeline';
 import { useAuth } from '@/services/auth';
+import { useEdits } from '@/state/edits';
 import { usePrefs } from '@/state/prefs';
 import { useProjects } from '@/state/projects';
 import { Logo } from '@/ui/brand';
@@ -17,9 +21,18 @@ export default function Home() {
   const { user } = useAuth();
   const balance = usePrefs((s) => s.clipBalance);
   const projects = useProjects((s) => s.projects);
+  const edits = useEdits((s) => s.edits);
+  const createEdit = useEdits((s) => s.createEdit);
+  const deleteEdit = useEdits((s) => s.deleteEdit);
   const [url, setUrl] = useState('');
 
   const openNew = (link: string) => router.push({ pathname: '/new', params: link ? { url: link } : {} });
+
+  const openEditor = (id: string) => router.push({ pathname: '/editor/[id]', params: { id } });
+  const startEdit = async () => {
+    const assets = await pickVideos();
+    if (assets.length) openEditor(createEdit(assets));
+  };
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1 }}>
@@ -67,6 +80,29 @@ export default function Home() {
           <Button title="Upload video" variant="secondary" icon={<Ionicons name="cloud-upload-outline" size={18} color={colors.text} />} style={{ flex: 1 }} onPress={() => openNew('')} />
         </Row>
         <T variant="tiny" style={{ marginTop: 8 }}>Tip: in the YouTube app, tap Share → FrameFlow</T>
+
+        <Row style={{ justifyContent: 'space-between', marginTop: 26, marginBottom: 10 }}>
+          <T variant="h2">Editor</T>
+        </Row>
+        <Button title="Edit a video yourself" variant="secondary" icon={<Ionicons name="cut-outline" size={18} color={colors.text} />} onPress={startEdit} />
+        {edits.length > 0 && (
+          <View style={{ gap: 8, marginTop: 8 }}>
+            {edits.slice(0, 5).map((e) => (
+              <Pressable key={e.id} onPress={() => openEditor(e.id)}>
+                <Panel style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Ionicons name="film-outline" size={20} color={colors.saffronText} />
+                  <View style={{ flex: 1 }}>
+                    <T style={{ fontFamily: fonts.bold }}>{e.name}</T>
+                    <T variant="tiny">{e.main.length} {e.main.length === 1 ? 'clip' : 'clips'} · {duration(totalDuration(e))}</T>
+                  </View>
+                  <Pressable hitSlop={10} onPress={() => deleteEdit(e.id)}>
+                    <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
+                  </Pressable>
+                </Panel>
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         <Row style={{ justifyContent: 'space-between', marginTop: 26, marginBottom: 10 }}>
           <T variant="h2">Recent</T>

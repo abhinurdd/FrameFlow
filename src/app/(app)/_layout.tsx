@@ -8,6 +8,7 @@ export default function AppLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="new" options={{ presentation: 'modal' }} />
       <Stack.Screen name="project/[id]/review" options={{ presentation: 'fullScreenModal', animation: 'fade' }} />
+      <Stack.Screen name="editor/[id]" options={{ gestureEnabled: false }} />
       <Stack.Screen name="export" options={{ presentation: 'modal' }} />
       <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
     </Stack>

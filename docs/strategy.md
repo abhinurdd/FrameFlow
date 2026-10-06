@@ -2,7 +2,7 @@
 
 **Owner of tech:** Claude (end to end).
 **Last updated:** 2026-10-06.
-**Evidence base:** [research/competitive-teardown.md](research/competitive-teardown.md).
+**Evidence base:** [research/competitive-teardown.md](research/competitive-teardown.md), [research/vn-feature-inventory.md](research/vn-feature-inventory.md).
 
 Living document. Update it when a decision is made or a phase finishes.
 
@@ -117,7 +117,18 @@ Features get copied in a quarter, so the edge has to come from these:
 | **2. Retention** | After the MVP | Reprompt/chat ("3 more about money"), Hindi filler removal, brand presets, multi-account posting and scheduling, agency mode (batch links, many brands). |
 | **3. Expand** | Later | Regional languages, an insights loop (what performed, what to clip next), a learned ranker trained on our own data. |
 
-**Explicitly not doing:** generative video, AI avatars, dubbing (Meta and YouTube give it away), deep multi-track editing. Match VN's gestures, not its depth.
+### Editor track (runs alongside the phases above)
+
+The user decided on 2026-10-06 that FrameFlow is a full AI video editor with VN's feature set, not only a clipper. Parity is tracked feature by feature in [research/vn-feature-inventory.md](research/vn-feature-inventory.md).
+
+| Step | Scope | Status |
+|---|---|---|
+| **E1. Cut editor** | Import, magnetic main track, split, trim, delete, duplicate, reorder, speed, volume, rotate/flip, aspect ratio, text, undo/redo, drafts, live preview | Built (runs in Expo Go) |
+| **E2. Compositor and export** | A frame-accurate compositor shared by preview and export. Unlocks export, transitions, filters and adjust, crop, PiP and stickers, audio tracks, freeze and reverse. Needs a development build | Not started |
+| **E3. Motion and colour** | Keyframes with easing, curve speed, masks, chroma key, blend modes, FX, LUTs, text animation | Not started |
+| **E4. AI in the editor** | Hinglish auto captions, filler and silence removal, cutout, denoise, and AI clipping feeding straight into the timeline | Not started |
+
+**Explicitly not doing:** generative video, AI avatars, dubbing (Meta and YouTube give it away).
 
 ## 7. Open risks and decisions (need the user)
 
@@ -136,3 +147,6 @@ Features get copied in a quarter, so the edge has to come from these:
 - 2026-10-06: Test set shape: about 50 hours of audio, with a human-corrected gold subset of about 5 hours (both scripts) for WER/CER. The rest is for speed, cost and the end-to-end spike.
 - 2026-10-06: Sarvam's REST endpoint has no word-level timestamps or diarization and takes about 30 s of audio per call. Long-form use needs their Batch API. Word timing is required for the caption track, so Sarvam would need forced alignment on top unless the Batch API returns it.
 - 2026-10-06: Highlight selection uses `claude-opus-5-5` with structured output. Model choice gets revisited once unit cost is measured.
+- 2026-10-06: **Direction change from the user:** FrameFlow is an advanced AI video editor with VN's full feature set. This reverses the earlier "match VN's gestures, not its depth" call. AI clipping stays as the differentiator VN lacks.
+- 2026-10-06: The manual editor's document is an `Edit` (`src/engine/timeline.ts`): one JSON per project, and every tool is a pure function on it, the same principle as Clip Spec. Step E1 is built on it.
+- 2026-10-06: E1 previews by hopping one `expo-video` player between segments. That cannot do overlays, transitions, filters or export, so E2 needs a real compositor and a development build. The choice of compositor (Skia on device plus native AVFoundation/Media3 export, versus server render) is still open and should be prototyped before E2 starts.
