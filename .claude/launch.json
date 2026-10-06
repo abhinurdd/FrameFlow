@@ -4,8 +4,24 @@
     {
       "name": "metro",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["expo", "start", "--port", "8082"],
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "--port",
+        "8082"
+      ],
       "port": 8082
+    },
+    {
+      "name": "media-server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "pipeline",
+        "run",
+        "server"
+      ],
+      "port": 8787
     }
   ]
 }

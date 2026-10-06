@@ -1,5 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { createVideoPlayer } from 'expo-video';
 
@@ -23,6 +24,18 @@ function keep(uri: string, id: string) {
   }
 }
 
+/**
+ * Re-encode a photo as an upright JPEG no larger than 4K. iPhone photos are HEIC with
+ * the rotation stored as metadata, which the export renderer cannot read reliably.
+ */
+async function normalizePhoto(uri: string, width: number, height: number) {
+  const context = ImageManipulator.manipulate(uri);
+  const longest = Math.max(width, height);
+  if (longest > 3840) context.resize(width >= height ? { width: 3840 } : { height: 3840 });
+  const image = await context.renderAsync();
+  return image.saveAsync({ format: SaveFormat.JPEG, compress: 0.92 });
+}
+
 /** Length of an audio or video file, read by loading it into a player. */
 export function probeDuration(uri: string) {
   return new Promise<number>((resolve) => {
@@ -43,13 +56,17 @@ export function probeDuration(uri: string) {
 export async function pickMedia(kinds: ('videos' | 'images')[] = ['videos', 'images'], multiple = true): Promise<Asset[]> {
   const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: kinds, allowsMultipleSelection: multiple, orderedSelection: true, quality: 1 });
   if (result.canceled) return [];
-  return result.assets
-    .filter((a) => a.type === 'image' || a.duration)
-    .map((a) => {
+  const picked = result.assets.filter((a) => a.type === 'image' || a.duration);
+  return Promise.all(
+    picked.map(async (a): Promise<Asset> => {
       const id = uid('ast');
-      const kind: AssetKind = a.type === 'image' ? 'image' : 'video';
-      return { id, uri: keep(a.uri, id), kind, duration: kind === 'image' ? 0 : a.duration! / 1000, width: a.width, height: a.height, name: a.fileName ?? undefined };
-    });
+      if (a.type === 'image') {
+        const photo = await normalizePhoto(a.uri, a.width, a.height);
+        return { id, uri: keep(photo.uri, id), kind: 'image', duration: 0, width: photo.width, height: photo.height, name: a.fileName ?? undefined };
+      }
+      return { id, uri: keep(a.uri, id), kind: 'video', duration: a.duration! / 1000, width: a.width, height: a.height, name: a.fileName ?? undefined };
+    }),
+  );
 }
 
 export async function pickAudio(): Promise<Asset | null> {

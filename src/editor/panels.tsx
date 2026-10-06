@@ -184,7 +184,19 @@ export function TransformPanel({
   );
 }
 
-type TextTab = 'edit' | 'font' | 'colour' | 'outline' | 'box';
+type TextTab = 'edit' | 'styles' | 'font' | 'colour' | 'outline' | 'box';
+
+/** One-tap looks for text. Each replaces the styling but keeps the size and alignment. */
+const TEXT_PRESETS: { name: string; style: Partial<TextStyle> }[] = [
+  { name: 'Clean', style: { font: 'inter', weight: 'black', color: '#FFFFFF', strokeColor: null, background: null, shadow: true, uppercase: false, italic: false } },
+  { name: 'Outline', style: { font: 'inter', weight: 'black', color: '#FFFFFF', strokeColor: '#111111', background: null, shadow: false, uppercase: true, italic: false } },
+  { name: 'Pop', style: { font: 'rounded', weight: 'black', color: '#FFD23F', strokeColor: '#111111', background: null, shadow: true, uppercase: false, italic: false } },
+  { name: 'Label', style: { font: 'inter', weight: 'bold', color: '#111111', strokeColor: null, background: '#FFFFFF', shadow: false, uppercase: false, italic: false } },
+  { name: 'Saffron', style: { font: 'inter', weight: 'black', color: '#FFFFFF', strokeColor: null, background: '#FF7A1A', shadow: false, uppercase: true, italic: false } },
+  { name: 'Editorial', style: { font: 'serif', weight: 'bold', color: '#FFFFFF', strokeColor: null, background: null, shadow: true, uppercase: false, italic: true } },
+  { name: 'Terminal', style: { font: 'mono', weight: 'bold', color: '#3DDC84', strokeColor: null, background: '#111111', shadow: false, uppercase: false, italic: false } },
+  { name: 'Neon', style: { font: 'rounded', weight: 'black', color: '#FF2E7E', strokeColor: '#FFFFFF', background: null, shadow: true, uppercase: true, italic: false } },
+];
 
 export function TextPanel({ text, style, onText, onStyle }: { text: string; style: TextStyle; onText: Change<string>; onStyle: Change<TextStyle> }) {
   const [tab, setTab] = useState<TextTab>('edit');
@@ -195,6 +207,7 @@ export function TextPanel({ text, style, onText, onStyle }: { text: string; styl
         <Segmented
           options={[
             { value: 'edit', label: 'Edit' },
+            { value: 'styles', label: 'Styles' },
             { value: 'font', label: 'Font' },
             { value: 'colour', label: 'Colour' },
             { value: 'outline', label: 'Outline' },
@@ -221,6 +234,13 @@ export function TextPanel({ text, style, onText, onStyle }: { text: string; styl
             ))}
           </Row>
         </View>
+      )}
+      {tab === 'styles' && (
+        <Strip>
+          {TEXT_PRESETS.map((p) => (
+            <Chip key={p.name} label={p.name} onPress={() => set(p.style)} />
+          ))}
+        </Strip>
       )}
       {tab === 'font' && (
         <>

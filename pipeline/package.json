@@ -4,11 +4,14 @@
   "type": "module",
   "scripts": {
     "ff": "tsx src/cli.ts",
+    "server": "tsx server/index.ts",
     "test": "tsx --test src/*.test.ts",
+    "test:server": "tsx --test server/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "@napi-rs/canvas": "^1.0.10",
     "zod": "^4.6.5"
   },
   "devDependencies": {

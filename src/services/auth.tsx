@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -15,6 +16,7 @@ type AuthContextValue = {
   sendEmailOtp: (email: string) => Promise<void>;
   verifyEmailOtp: (email: string, code: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -97,6 +99,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!code) throw new Error('Google sign-in did not return a code');
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) throw exchangeError;
+      },
+
+      async signInWithApple() {
+        let credential: AppleAuthentication.AppleAuthenticationCredential;
+        try {
+          credential = await AppleAuthentication.signInAsync({
+            requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME, AppleAuthentication.AppleAuthenticationScope.EMAIL],
+          });
+        } catch (e) {
+          if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return; // user cancelled
+          throw e;
+        }
+        // Apple only sends the name on the very first sign-in.
+        const name = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(' ') || null;
+        if (!supabase) {
+          return demoSignIn({ id: `demo-apple-${credential.user}`, email: credential.email, name: name ?? 'Creator' });
+        }
+        if (!credential.identityToken) throw new Error('Apple sign-in did not return a token');
+        const { error } = await supabase.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken });
+        if (error) throw error;
+        if (name) await supabase.auth.updateUser({ data: { full_name: name } });
       },
 
       async signOut() {

@@ -24,13 +24,13 @@ function GoogleG() {
 }
 
 export default function SignIn() {
-  const { sendEmailOtp, signInWithGoogle } = useAuth();
+  const { sendEmailOtp, signInWithGoogle, signInWithApple } = useAuth();
   const [email, setEmail] = useState('');
-  const [busy, setBusy] = useState<'google' | 'email' | null>(null);
+  const [busy, setBusy] = useState<'google' | 'apple' | 'email' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const valid = EMAIL_RE.test(email.trim());
 
-  async function run(kind: 'google' | 'email', fn: () => Promise<void>) {
+  async function run(kind: 'google' | 'apple' | 'email', fn: () => Promise<void>) {
     setError(null);
     setBusy(kind);
     try {
@@ -64,6 +64,17 @@ export default function SignIn() {
           style={{ marginTop: 28 }}
           onPress={() => run('google', signInWithGoogle)}
         />
+        {Platform.OS === 'ios' && (
+          <Button
+            title="Continue with Apple"
+            variant="secondary"
+            icon={<Ionicons name="logo-apple" size={19} color={colors.text} />}
+            loading={busy === 'apple'}
+            disabled={busy !== null}
+            style={{ marginTop: 10 }}
+            onPress={() => run('apple', signInWithApple)}
+          />
+        )}
 
         <Row style={{ marginVertical: 20 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: colors.line }} />

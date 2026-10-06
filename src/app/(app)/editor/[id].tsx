@@ -602,6 +602,8 @@ export default function Editor() {
           { label: 'Auto captions', icon: 'chatbox-ellipses-outline', onPress: autoCaptions, busy: !!busy },
           { label: 'Remove silences', icon: 'remove-circle-outline', onPress: removeSilences, busy: !!busy },
           { label: 'Remove filler words', icon: 'close-circle-outline', onPress: removeFillers },
+          // Markers come from "Beats" on a music clip, or from the Marker tool.
+          ...(edit.markers.length ? [{ label: 'Cut on markers', icon: 'pulse-outline' as const, onPress: () => apply(edit.markers.reduce((e, m) => splitAt(e, m, uid('seg')), edit)) }] : []),
           ...(target && targetAsset?.kind === 'video' ? [{ label: 'Clean up audio', icon: 'mic-outline' as const, onPress: () => cleanAudio(target, targetAsset), busy: !!busy }] : []),
         ]}
       />

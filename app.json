@@ -8,7 +8,8 @@
     "scheme": "frameflow",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -41,7 +42,8 @@
         }
       ],
       "expo-audio",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true,
