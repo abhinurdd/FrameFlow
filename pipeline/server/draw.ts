@@ -6,12 +6,14 @@
  * same picture the app previews. This file only turns those values into pixels.
  */
 
-import { createCanvas, type Canvas, type SKRSContext2D } from '@napi-rs/canvas';
+import { createCanvas, Path2D, type Canvas, type SKRSContext2D } from '@napi-rs/canvas';
 
 import { combineEffects, effectAt, resolveTransform, transformAt, transitionAt, type Layer } from '../../src/engine/animate.ts';
+import { maskPath, squareMask } from '../../src/engine/mask.ts';
 import { compileLook, isIdentity, NO_LOOK, saturationLayer, type BlendLayer, type CompiledLook, type Look } from '../../src/engine/looks.ts';
 import {
   activeAt,
+  overlayBlend,
   segmentDuration,
   type BlendMode,
   type Caption,
@@ -263,7 +265,7 @@ export class Painter {
     const { W, H } = this;
     const tr = resolveTransform(o, t - o.start, o.duration);
     const w = 0.5 * W;
-    const square = o.kind === 'sticker' || o.mask === 'circle';
+    const square = o.kind === 'sticker' || squareMask(o.mask);
     const box = { w, h: square ? w : (w * pic.height) / pic.width };
     // A circle shows a centred square crop of the source.
     const k = Math.max(box.w / pic.width, box.h / pic.height);
@@ -279,8 +281,7 @@ export class Painter {
       // Stickers take no look in the app.
       // Nor does a keyed overlay: the preview cannot grade a picture with holes in it.
       look: o.kind === 'sticker' || o.chroma ? NO_LOOK : o.look,
-      // Only photos blend: the app's preview cannot blend a playing video, so export must not either.
-      blend: o.kind === 'image' ? o.blend : 'normal',
+      blend: overlayBlend(o),
       mask: o.mask,
       flipH: o.flipH,
       clip: null,
@@ -327,11 +328,14 @@ export class Painter {
 
     const overflows = dest.x < -0.01 || dest.y < -0.01 || dest.x + dest.w > box.w + 0.01 || dest.y + dest.h > box.h + 0.01;
     if (o.mask !== 'none' || overflows) {
-      ctx.beginPath();
-      if (o.mask === 'circle') ctx.arc(box.w / 2, box.h / 2, Math.min(box.w, box.h) / 2, 0, Math.PI * 2);
-      else if (o.mask === 'rounded') ctx.roundRect(0, 0, box.w, box.h, 0.12 * box.w);
-      else ctx.rect(0, 0, box.w, box.h);
-      ctx.clip();
+      const outline = maskPath(o.mask, box.w, box.h);
+      if (outline) {
+        ctx.clip(new Path2D(outline));
+      } else {
+        ctx.beginPath();
+        ctx.rect(0, 0, box.w, box.h);
+        ctx.clip();
+      }
     }
 
     if (isIdentity(look)) {

@@ -15,6 +15,7 @@
 
 import { IDENTITY, NO_ANIMATION, transformAt, type Animation, type EffectId, type Keyframe, type Transform, type Transition } from './animate';
 import type { Chroma } from './chroma';
+import type { Mask } from './mask';
 import { NO_LOOK, type Look } from './looks';
 import { offsetAt, playDuration, sliceCurve, sourceAt } from './speed';
 import type { TemplateId } from './types';
@@ -70,7 +71,15 @@ export type Segment = {
 
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'soft-light' | 'lighten' | 'darken';
 export const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'soft-light', 'lighten', 'darken'];
-export type Mask = 'none' | 'circle' | 'rounded';
+export type { Mask } from './mask';
+/** The modes a playing video can be given: the ones its live preview can show. */
+export const VIDEO_BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply'];
+
+/** The blend mode an overlay is really drawn with. */
+export function overlayBlend(o: { kind: Overlay['kind']; blend: BlendMode }): BlendMode {
+  if (o.kind === 'sticker') return 'normal';
+  return o.kind === 'image' || VIDEO_BLEND_MODES.includes(o.blend) ? o.blend : 'normal';
+}
 
 /** Picture-in-picture video or image, or an emoji sticker. Base width is half the canvas. */
 export type Overlay = {

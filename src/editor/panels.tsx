@@ -3,9 +3,10 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { ANIMATIONS, EFFECTS, IDENTITY, TRANSITIONS, type Animation, type EffectId, type Transform, type Transition } from '@/engine/animate';
+import { MASKS } from '@/engine/mask';
 import { DEFAULT_CHROMA, KEY_COLORS, type Chroma } from '@/engine/chroma';
 import { ADJUST_SLIDERS, FILTERS, NO_ADJUST, type Look } from '@/engine/looks';
-import { ASPECTS, BLEND_MODES, FONTS, SPEEDS, type Caption, type Background, type BlendMode, type CaptionStyle, type EditAspect, type Fit, type Mask, type TextStyle } from '@/engine/timeline';
+import { ASPECTS, FONTS, SPEEDS, type Caption, type Background, type BlendMode, type CaptionStyle, type EditAspect, type Fit, type Mask, type TextStyle } from '@/engine/timeline';
 import { CURVE_MAX, CURVE_MIN, CURVE_POINTS, curveAt, SPEED_CURVES } from '@/engine/speed';
 import { Chip, Row, Segmented, T } from '@/ui/primitives';
 import { TEMPLATES } from '@/ui/templates';
@@ -499,21 +500,19 @@ export function EffectsPanel({ current, onPick }: { current?: EffectId; onPick: 
   );
 }
 
-export function BlendPanel({ blend, mask, onBlend, onMask }: { blend: BlendMode; mask: Mask; onBlend?: (b: BlendMode) => void; onMask: (m: Mask) => void }) {
+export function BlendPanel({ blend, modes, mask, onBlend, onMask }: { blend: BlendMode; /** The modes this overlay can use. */ modes: BlendMode[]; mask: Mask; onBlend: (b: BlendMode) => void; onMask: (m: Mask) => void }) {
   return (
     <View style={{ gap: 8 }}>
-      {onBlend && (
       <Strip>
         <T variant="muted">Blend</T>
-        {BLEND_MODES.map((b) => (
+        {modes.map((b) => (
           <Chip key={b} label={b[0].toUpperCase() + b.slice(1)} selected={blend === b} onPress={() => onBlend(b)} />
         ))}
       </Strip>
-      )}
       <Strip>
         <T variant="muted">Mask</T>
-        {(['none', 'circle', 'rounded'] as const).map((m) => (
-          <Chip key={m} label={m[0].toUpperCase() + m.slice(1)} selected={mask === m} onPress={() => onMask(m)} />
+        {MASKS.map((m) => (
+          <Chip key={m.id} label={m.name} selected={mask === m.id} onPress={() => onMask(m.id)} />
         ))}
       </Strip>
     </View>

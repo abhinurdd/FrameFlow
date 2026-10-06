@@ -768,3 +768,36 @@ test('chroma key on a main clip shows the canvas background', async () => {
   const [r1, g1] = on.at(0.5, 0.5);
   assert.ok(r1 > 180 && g1 < 80, `expected red, got ${[r1, g1]}`);
 });
+
+test('a diamond mask cuts the corners off an overlay', async () => {
+  const main = appendAssets(fresh('16:9'), [assets.land], ['s1']);
+  const overlay = { ...newOverlay('o1', 0, { asset: assets.green }), duration: 2, transform: { ...IDENTITY, scale: 1.6 } };
+  const edit = addItem(addAssets(main, [assets.green]), 'overlays', { ...overlay, mask: 'diamond' as const });
+  const on = await frameAt(await render('mask-diamond', edit), 1, 'mask-diamond');
+  const under = await frameAt(await render('mask-under', main), 1, 'mask-under');
+  const whole = await frameAt(await render('mask-none', addItem(addAssets(main, [assets.green]), 'overlays', overlay)), 1, 'mask-none');
+  // The overlay's box is a square 0.8 of the frame width, centred. Near its corner the diamond is cut away.
+  const diff = (p: number[], q: number[]) => Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) + Math.abs(p[2] - q[2]);
+  const a = on.at(0.15, 0.1);
+  const b = under.at(0.15, 0.1);
+  assert.ok(diff(a, b) < 25, `expected the video underneath ${b}, got ${a}`);
+  assert.ok(diff(whole.at(0.15, 0.1), b) > 30, 'the unmasked overlay should cover that corner');
+  // The middle still shows the overlay's red square.
+  const [r1, g1] = on.at(0.5, 0.5);
+  assert.ok(r1 > 180 && g1 < 80, `expected red, got ${[r1, g1]}`);
+});
+
+test('a video overlay blends with what is under it', async () => {
+  const main = appendAssets(fresh('16:9'), [assets.land], ['s1']);
+  const overlay = { ...newOverlay('o1', 0, { asset: assets.green }), duration: 2, transform: { ...IDENTITY, scale: 2 } };
+  const edit = (blend: 'normal' | 'multiply') => addItem(addAssets(main, [assets.green]), 'overlays', { ...overlay, blend });
+  const plain = await frameAt(await render('blend-normal', edit('normal')), 1, 'blend-normal');
+  const mixed = await frameAt(await render('blend-multiply', edit('multiply')), 1, 'blend-multiply');
+  const under = await frameAt(await render('blend-under', main), 1, 'blend-under');
+  const p = plain.at(0.05, 0.08);
+  const m = mixed.at(0.05, 0.08);
+  const u = under.at(0.05, 0.08);
+  // Multiplying by green keeps at most the green of what is underneath, and never brightens.
+  assert.ok(Math.abs(m[1] - p[1]) > 15 || Math.abs(m[0] - p[0]) > 15 || u[1] > 200, `blend made no difference: ${m} vs ${p}`);
+  assert.ok(m[0] <= u[0] + 8 && m[1] <= u[1] + 8 && m[2] <= u[2] + 8, `multiply brightened ${u} to ${m}`);
+});

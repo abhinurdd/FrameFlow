@@ -8,13 +8,14 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { combineEffects, effectAt, resolveTransform, transformAt, transitionAt, type Layer, type Transform } from '@/engine/animate';
 import { compileLook, saturationLayer, type BlendLayer, type Look } from '@/engine/looks';
-import { activeAt, mainFrameAt, segmentDuration, segmentStarts, type Asset, type Caption, type CaptionStyle, type Edit, type Overlay, type Segment, type TextItem } from '@/engine/timeline';
+import { activeAt, overlayBlend, mainFrameAt, segmentDuration, segmentStarts, type Asset, type Caption, type CaptionStyle, type Edit, type Overlay, type Segment, type TextItem } from '@/engine/timeline';
 import type { Word } from '@/engine/types';
 import { CaptionLine, ClipFrame } from '@/ui/clip-visual';
 import { colors, hasDevanagari } from '@/ui/theme';
 
 import { fontFamily } from './fonts';
 import { DEFAULT_CHROMA } from '@/engine/chroma';
+import { maskPath, squareMask } from '@/engine/mask';
 import { sourceAt, speedAt } from '@/engine/speed';
 
 import { KeyedImage, KeyedVideo, type Pick } from './keyed';
@@ -189,11 +190,18 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
   const visible = local >= 0 && local < overlay.duration;
   const t = nudged(resolveTransform(overlay, Math.max(0, local), overlay.duration), nudge, canvas);
   const bw = canvas.w * 0.5;
-  const square = overlay.kind === 'sticker' || overlay.mask === 'circle';
+  const square = overlay.kind === 'sticker' || squareMask(overlay.mask);
   const bh = square || !asset?.width ? bw : bw * (asset.height / asset.width);
   const radius = overlay.mask === 'circle' ? bw / 2 : overlay.mask === 'rounded' ? bw * 0.12 : 0;
+  // Shapes a rounded corner cannot make are cut by Skia.
+  const shaped = overlay.mask !== 'none' && overlay.mask !== 'circle' && overlay.mask !== 'rounded';
+  const blend = overlayBlend(overlay);
+  const blended = blend !== 'normal';
   const media: ViewStyle = { width: bw, height: bh, transform: [{ scaleX: overlay.flipH ? -1 : 1 }] };
   const keyed = overlay.kind === 'sticker' ? null : (overlay.chroma ?? (pick ? DEFAULT_CHROMA : null));
+  // Skia draws the overlay when its pixels are needed: to key, to cut a shape, or to blend a playing video.
+  const drawn = overlay.kind !== 'sticker' && !!asset && (!!keyed || shaped || (blended && asset.kind === 'video'));
+  const treatment = { chroma: overlay.chroma, clip: shaped ? maskPath(overlay.mask, bw, bh) : null, look: overlay.chroma ? null : compileLook(overlay.look), blend: asset?.kind === 'video' && (blend === 'screen' || blend === 'multiply') ? blend : ('normal' as const) };
   return (
     <Pressable
       onPress={onPress}
@@ -208,7 +216,8 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
         opacity: visible ? t.opacity : 0,
         borderRadius: radius,
         overflow: 'hidden',
-        mixBlendMode: overlay.kind === 'image' ? overlay.blend : 'normal',
+        // A playing video is mixed inside Skia instead: see `mixer` in keyed.tsx.
+        mixBlendMode: asset?.kind === 'video' ? 'normal' : blend,
         transform: [{ scale: t.scale }, { rotate: `${t.rotation}deg` }],
         borderWidth: selected ? 1.5 : 0,
         borderColor: SELECT,
@@ -217,12 +226,12 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
       }}>
       {overlay.kind === 'sticker' ? (
         <Text style={{ fontSize: bw * 0.8, lineHeight: bw, transform: [{ scaleX: overlay.flipH ? -1 : 1 }] }}>{overlay.emoji}</Text>
-      ) : keyed && asset ? (
+      ) : drawn && asset ? (
         <View style={{ transform: [{ scaleX: overlay.flipH ? -1 : 1 }] }}>
           {asset.kind === 'video' ? (
-            <KeyedVideo uri={asset.uri} chroma={keyed} width={bw} height={bh} target={overlay.in + Math.max(0, local)} playing={playing && visible} volume={overlay.muted || !visible ? 0 : overlay.volume} pick={pick} />
+            <KeyedVideo uri={asset.uri} {...treatment} width={bw} height={bh} target={overlay.in + Math.max(0, local)} playing={playing && visible} volume={overlay.muted || !visible ? 0 : overlay.volume} pick={pick} />
           ) : (
-            <KeyedImage uri={asset.uri} chroma={keyed} width={bw} height={bh} pick={pick} />
+            <KeyedImage uri={asset.uri} {...treatment} width={bw} height={bh} pick={pick} />
           )}
         </View>
       ) : asset?.kind === 'video' ? (
@@ -230,7 +239,7 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
       ) : (
         asset && <Image source={{ uri: asset.uri }} style={media as ImageStyle} contentFit="cover" />
       )}
-      {overlay.kind !== 'sticker' && !keyed && <LookLayers look={overlay.look} width={bw} height={bh} />}
+      {overlay.kind !== 'sticker' && !drawn && <LookLayers look={overlay.look} width={bw} height={bh} />}
     </Pressable>
   );
 }

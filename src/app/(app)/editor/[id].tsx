@@ -76,6 +76,9 @@ import {
   type CaptionWord,
   type Edit,
   type Segment,
+  BLEND_MODES,
+  VIDEO_BLEND_MODES,
+  overlayBlend,
 } from '@/engine/timeline';
 import { uid, useEdits } from '@/state/edits';
 import { Button, Row, T } from '@/ui/primitives';
@@ -540,7 +543,7 @@ export default function Editor() {
             opens('chroma', 'color-fill-outline', 'Chroma'),
             // A keyed picture has holes in it, which filters cannot follow.
             ...(selOverlay.chroma ? [] : [opens('filters', 'color-filter-outline', 'Filters'), opens('adjust', 'options-outline', 'Adjust')]),
-            opens('blend', 'layers-outline', selOverlay.kind === 'image' ? 'Blend' : 'Mask'),
+            opens('blend', 'layers-outline', 'Blend'),
           ]
         : []),
       opens('transform', 'resize-outline', 'Transform'),
@@ -794,8 +797,8 @@ export default function Editor() {
         }}
       />
     );
-  else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={selOverlay.blend} mask={selOverlay.mask} // A playing video cannot be blended in the live preview, so the option is only offered for photos.
-        onBlend={selOverlay.kind === 'image' ? (blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend })) : undefined} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
+  else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={overlayBlend(selOverlay)} modes={selOverlay.kind === 'video' ? VIDEO_BLEND_MODES : BLEND_MODES} mask={selOverlay.mask}
+        onBlend={(blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend }))} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
   else if (panel === 'rename') body = <PromptPanel key={edit.id} initial={edit.name} placeholder="Project name" action="Save" onSubmit={(name) => { useEdits.getState().setEdit({ ...edit, name }); setPanel(null); }} />;
   else if (panel === 'chroma' && keyable) body = <ChromaPanel chroma={keyable.chroma} picking={picking} onPicking={startPicking} onChange={setChroma} />;
   else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;

@@ -1,5 +1,6 @@
 import { resolveTransform, setKeyframe, transformAt, transitionAt, IDENTITY, NO_ANIMATION } from './animate';
 import { chromaPixel, DEFAULT_CHROMA, hexToRgb, rgbToHex } from './chroma';
+import { maskPath, MASKS, squareMask } from './mask';
 import { compileLook, gradePixel, NO_ADJUST, NO_LOOK } from './looks';
 import { offsetAt, playDuration, ptsExpression, sourceAt, speedAt } from './speed';
 import {
@@ -266,4 +267,17 @@ test('a split green-screen clip is keyed on both halves', () => {
   const edit = patchSegment(appendAssets(empty, [{ id: 'a', uri: 'a', kind: 'video', duration: 10, width: 1920, height: 1080 }], ['s1']), 's1', { chroma: DEFAULT_CHROMA });
   const halves = splitAt(edit, 4, 's2').main;
   expect(halves.map((s) => s.chroma)).toEqual([DEFAULT_CHROMA, DEFAULT_CHROMA]);
+});
+
+test('every mask but None has an outline that stays inside its box', () => {
+  expect(maskPath('none', 100, 100)).toBeNull();
+  for (const m of MASKS.filter((x) => x.id !== 'none')) {
+    const d = maskPath(m.id, 200, 100)!;
+    expect(d.startsWith('M') && d.endsWith('Z')).toBe(true);
+    if (m.id === 'circle' || m.id === 'rounded') continue;
+    const nums = d.match(/-?\d+(\.\d+)?/g)!.map(Number);
+    nums.forEach((v, i) => expect(v >= -5 && v <= (i % 2 ? 105 : 205)).toBe(true));
+  }
+  expect(squareMask('star')).toBe(true);
+  expect(squareMask('rounded')).toBe(false);
 });

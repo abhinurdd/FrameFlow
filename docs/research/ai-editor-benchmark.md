@@ -53,9 +53,9 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Adjust | brightness, contrast, saturation, exposure, sharpen, highlight, shadow, temp, tint, fade, vignette, grain, HSL, curves | ✅ brightness, contrast, saturation, temperature, tint, fade, vignette; ❌ sharpen, highlights/shadows, grain, HSL, curves |
 | Transitions | CapCut library | ✅ 10 (dissolve, dips, pushes, wipes, zoom), duration, apply to all |
 | Effects | CapCut library | 🟡 8 (shake, pulse, slow zoom, flash, strobe, blur, dim, letterbox) |
-| Picture-in-picture overlays | CapCut | ✅ video and photo; 🟡 blend modes and circle / rounded masks |
-| Blend modes | CapCut | 🟡 7 |
-| Masks | linear, mirror, circle, rectangle, star… | 🟡 circle and rounded only |
+| Picture-in-picture overlays | CapCut | ✅ video and photo, with blend modes and seven mask shapes |
+| Blend modes | CapCut | 🟡 7 on photos; Screen and Multiply on video overlays (the live preview approximates them, export is exact) |
+| Masks | linear, mirror, circle, rectangle, star… | 🟡 circle, rounded, diamond, triangle, hexagon, star, heart; ❌ linear and mirror, feather, invert, moving the mask inside the picture |
 | Canvas ratio and background | CapCut, InShot | ✅ 8 ratios, colour background; blur background shows in export only |
 | Rotate, flip, fill / fit, zoom, opacity | all | ✅ |
 | Chroma key | CapCut, InShot, Edits | ✅ on main-track clips and on video and photo overlays: key colour (presets or an eyedropper that samples the picture), strength, soft edge, tint clean-up |
@@ -122,7 +122,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 1. **Deploy the media server.** Until it runs somewhere reachable, export and every AI tool only work next to the development Mac.
 2. **Real AI clipping**, wired into the editor. It is the differentiator VN and CapCut lack for Hindi, and it is still a mock.
 3. **Hinglish caption quality.** Whisper produced Devanagari for English loan words ("स्टार्टार्ट" for "startup"). The ASR bakeoff decides the provider.
-4. **More mask shapes, blending video overlays, background blur in preview.** These need more of the picture drawn through shaders.
+4. **Mask feather, invert and position; the remaining blend modes on video overlays; background blur in preview.** These need the main clip and its overlays drawn in one shader pass.
 
 ## Sources
 

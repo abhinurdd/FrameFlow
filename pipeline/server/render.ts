@@ -9,6 +9,7 @@ import { join } from 'node:path';
 
 import { createCanvas, type Canvas } from '@napi-rs/canvas';
 
+import { squareMask } from '../../src/engine/mask.ts';
 import { chromaPixel, type Chroma } from '../../src/engine/chroma.ts';
 import { ptsExpression } from '../../src/engine/speed.ts';
 import { activeAt, aspectRatio, mainFrameAt, totalDuration, type Edit, type Location, type Overlay, type Segment } from '../../src/engine/timeline.ts';
@@ -157,7 +158,7 @@ class Sources {
     const media = o.assetId ? this.media.get(o.assetId) : undefined;
     if (!media || media.kind === 'audio') return null;
     // Base width is half the canvas; a circle mask covers a square, so size by the short side.
-    const cover = o.mask === 'circle' ? Math.max(1, media.width / media.height) : 1;
+    const cover = squareMask(o.mask) ? Math.max(1, media.width / media.height) : 1;
     const width = 0.5 * this.W * peakScale(o) * cover;
     const moving = o.kind === 'video' && media.kind === 'video';
     const picture = moving ? await this.video(`overlay:${o.id}`, frame, media, o.in + (t - o.start), 1, UPRIGHT, width) : await this.still(media, UPRIGHT, width);
