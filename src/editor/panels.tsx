@@ -386,15 +386,17 @@ export function EffectsPanel({ current, onPick }: { current?: EffectId; onPick: 
   );
 }
 
-export function BlendPanel({ blend, mask, onBlend, onMask }: { blend: BlendMode; mask: Mask; onBlend: (b: BlendMode) => void; onMask: (m: Mask) => void }) {
+export function BlendPanel({ blend, mask, onBlend, onMask }: { blend: BlendMode; mask: Mask; onBlend?: (b: BlendMode) => void; onMask: (m: Mask) => void }) {
   return (
     <View style={{ gap: 8 }}>
+      {onBlend && (
       <Strip>
         <T variant="muted">Blend</T>
         {BLEND_MODES.map((b) => (
           <Chip key={b} label={b[0].toUpperCase() + b.slice(1)} selected={blend === b} onPress={() => onBlend(b)} />
         ))}
       </Strip>
+      )}
       <Strip>
         <T variant="muted">Mask</T>
         {(['none', 'circle', 'rounded'] as const).map((m) => (

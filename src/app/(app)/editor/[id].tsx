@@ -96,7 +96,7 @@ const PANEL_TITLES: Record<NonNullable<PanelId>, string> = {
   canvas: 'Canvas',
   sticker: 'Stickers',
   effects: 'Effects',
-  blend: 'Blend and mask',
+  blend: 'Shape and blend',
   audio: 'Audio',
   ai: 'AI tools',
   tts: 'Text to speech',
@@ -492,7 +492,7 @@ export default function Editor() {
       split,
       ...(selOverlay.kind === 'video' ? [opens('volume', 'volume-high-outline', 'Volume')] : []),
       opens('animation', 'color-wand-outline', 'Animation'),
-      ...(selOverlay.kind !== 'sticker' ? [opens('filters', 'color-filter-outline', 'Filters'), opens('adjust', 'options-outline', 'Adjust'), opens('blend', 'layers-outline', 'Blend')] : []),
+      ...(selOverlay.kind !== 'sticker' ? [opens('filters', 'color-filter-outline', 'Filters'), opens('adjust', 'options-outline', 'Adjust'), opens('blend', 'layers-outline', selOverlay.kind === 'image' ? 'Blend' : 'Mask')] : []),
       opens('transform', 'resize-outline', 'Transform'),
       keyframeTool,
       { icon: 'swap-horizontal-outline', label: 'Flip', onPress: () => apply(patchItem(edit, 'overlays', selOverlay.id, { flipH: !selOverlay.flipH })) },
@@ -721,7 +721,8 @@ export default function Editor() {
         }}
       />
     );
-  else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={selOverlay.blend} mask={selOverlay.mask} onBlend={(blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend }))} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
+  else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={selOverlay.blend} mask={selOverlay.mask} // A playing video cannot be blended in the live preview, so the option is only offered for photos.
+        onBlend={selOverlay.kind === 'image' ? (blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend })) : undefined} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
   else if (panel === 'rename') body = <PromptPanel key={edit.id} initial={edit.name} placeholder="Project name" action="Save" onSubmit={(name) => { useEdits.getState().setEdit({ ...edit, name }); setPanel(null); }} />;
   else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;
 

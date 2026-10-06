@@ -278,7 +278,8 @@ export class Painter {
       opacity: tr.opacity,
       // Stickers take no look in the app.
       look: o.kind === 'sticker' ? NO_LOOK : o.look,
-      blend: o.blend,
+      // Only photos blend: the app's preview cannot blend a playing video, so export must not either.
+      blend: o.kind === 'image' ? o.blend : 'normal',
       mask: o.mask,
       flipH: o.flipH,
       clip: null,

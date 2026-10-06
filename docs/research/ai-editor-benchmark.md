@@ -23,10 +23,10 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Import video and photos | CapCut | ✅ photos are converted to upright JPEG on import |
 | Multi-track timeline | CapCut | ✅ main track plus overlay, text, caption, effect and audio lanes |
 | Trim, split, delete, duplicate | CapCut | ✅ |
-| Reorder | hold and drag | 🟡 move left / right buttons; free-track items hold-and-drag |
+| Reorder | hold and drag | ✅ free-track items hold-and-drag; 🟡 clips use move left / right buttons |
 | Replace clip | CapCut | 🟡 |
-| Reverse | CapCut, InShot | 🟡 server tool |
-| Freeze frame | CapCut | 🟡 server tool |
+| Reverse | CapCut, InShot | ✅ server tool |
+| Freeze frame | CapCut | ✅ server tool |
 | Undo / redo | all | ✅ |
 | Pinch-zoom timeline, fixed playhead, time ruler | CapCut, VN | ✅ |
 | Markers | VN, Edits | 🟡 manual, plus beat detection |
@@ -42,7 +42,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Speed curves | CapCut presets and custom points | 🟡 six stepped ramps (Montage, Hero, Bullet, Flash in/out, Jump cut); no custom curve |
 | Optical-flow slow motion | CapCut | ❌ |
 | Keyframes | position, scale, rotation, opacity | 🟡 on clips, overlays and text, eased |
-| In / Out animations | CapCut | 🟡 9 each for clips, overlays, text |
+| In / Out animations | CapCut | ✅ 9 each for clips, overlays, text |
 | Combo / loop animations | CapCut | ❌ |
 
 ### Picture
@@ -53,7 +53,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Adjust | brightness, contrast, saturation, exposure, sharpen, highlight, shadow, temp, tint, fade, vignette, grain, HSL, curves | ✅ brightness, contrast, saturation, temperature, tint, fade, vignette; ❌ sharpen, highlights/shadows, grain, HSL, curves |
 | Transitions | CapCut library | ✅ 10 (dissolve, dips, pushes, wipes, zoom), duration, apply to all |
 | Effects | CapCut library | 🟡 8 (shake, pulse, slow zoom, flash, strobe, blur, dim, letterbox) |
-| Picture-in-picture overlays | CapCut | 🟡 video and photo, with blend modes and circle / rounded masks |
+| Picture-in-picture overlays | CapCut | ✅ video and photo; 🟡 blend modes and circle / rounded masks |
 | Blend modes | CapCut | 🟡 7 |
 | Masks | linear, mirror, circle, rectangle, star… | 🟡 circle and rounded only |
 | Canvas ratio and background | CapCut, InShot | ✅ 8 ratios, colour background; blur background shows in export only |
@@ -85,11 +85,11 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Add music from files | all | 🟡 |
 | Music and SFX library | CapCut, Edits | ❌ licensing |
 | Voice-over recording | CapCut | 🟡 |
-| Extract audio | CapCut | 🟡 server tool |
+| Extract audio | CapCut | ✅ server tool |
 | Beat detection | Edits, CapCut | 🟡 server tool, then "Cut on markers" |
 | Noise reduction | Captions, Edits | 🟡 server tool |
 | Voice effects | CapCut, Edits | 🟡 5 effects, server tool |
-| Text to speech | CapCut, InShot | 🟡 uses the Mac's system voices for now |
+| Text to speech | CapCut, InShot | ✅ uses the Mac's system voices for now |
 | Ducking, vocal isolation, waveforms | CapCut Pro | ❌ |
 
 ### AI
@@ -97,8 +97,9 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Feature | Benchmark | FrameFlow |
 |---|---|---|
 | Silence removal | InShot AI Cut, Submagic | ✅ |
-| Filler-word removal (um, matlab, yaar…) | InShot, Submagic | 🟡 uses caption word timings |
-| Long video → ranked short clips | OpusClip | ❌ app flow is still simulated; pipeline needs API keys |
+| Filler-word removal (um, matlab, yaar…) | InShot, Submagic | ✅ uses caption word timings |
+| Transcript editing (cut a word, cut the video) | Descript, OpusClip | ✅ |
+| Long video → ranked short clips | OpusClip | ❌ clips are still sample data (pipeline needs API keys), but they now open in the full editor |
 | Auto reframe with speaker tracking | OpusClip, Captions | ❌ |
 | One-tap AI edit, chat editing | Captions | ❌ |
 | AI B-roll, auto zoom, hook titles | Submagic | ❌ |
@@ -110,7 +111,8 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 |---|---|---|
 | 720p–4K, 24/30/60 fps | CapCut, VN | ✅ rendered by the media server, H.264 + AAC |
 | File-size estimate | VN | ✅ |
-| Save to gallery, share sheet | all | 🟡 |
+| Save to gallery | all | ✅ |
+| Share sheet | all | 🟡 |
 | On-device export | all | ❌ export needs the server reachable |
 | Bitrate control, HDR | VN | ❌ |
 | Templates, cloud projects, scheduling | CapCut, OpusClip | ❌ |

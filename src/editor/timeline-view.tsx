@@ -146,8 +146,8 @@ function ItemBar({
 
 function ZoomButton({ icon, label, onPress }: { icon: 'add' | 'remove'; label: string; onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={8} onPress={onPress} style={({ pressed }) => ({ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.lineStrong : colors.surface2 })}>
-      <Ionicons name={icon} size={16} color={colors.textSecondary} />
+    <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={10} onPress={onPress} style={({ pressed }) => ({ width: 26, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? colors.lineStrong : colors.surface2 })}>
+      <Ionicons name={icon} size={14} color={colors.textSecondary} />
     </Pressable>
   );
 }
@@ -333,7 +333,8 @@ export function TimelineView({
           style={({ pressed }) => ({ position: 'absolute', right: 10, top: RULER_H + (MAIN_H - 38) / 2, width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, opacity: pressed ? 0.75 : 1 })}>
           <Ionicons name="add" size={24} color={colors.ink} />
         </Pressable>
-        <View style={{ position: 'absolute', right: 8, bottom: 6, flexDirection: 'row', gap: 8 }}>
+        {/* On the ruler row, so they never cover a track. */}
+        <View style={{ position: 'absolute', right: 0, top: 0, height: RULER_H, paddingLeft: 10, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.bg }}>
           <ZoomButton icon="remove" label="Zoom timeline out" onPress={() => zoom(1 / 1.5)} />
           <ZoomButton icon="add" label="Zoom timeline in" onPress={() => zoom(1.5)} />
         </View>
