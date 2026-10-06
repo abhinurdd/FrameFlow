@@ -1,63 +1,101 @@
 import { Ionicons } from '@expo/vector-icons';
-import { VideoView } from 'expo-video';
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Alert, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { useEffect, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { pickVideos } from '@/editor/pick';
-import { SegmentStrip } from '@/editor/thumbs';
-import { usePlayback } from '@/editor/use-playback';
+import { AudioTracks } from '@/editor/audio';
+import { health, ServerError, tools } from '@/editor/api';
+import { EditCanvas } from '@/editor/canvas';
+import { ExportSheet } from '@/editor/export-sheet';
 import {
-  addText,
+  ActionsPanel,
+  AdjustPanel,
+  AnimationPanel,
+  BlendPanel,
+  CanvasPanel,
+  CaptionStylePanel,
+  EffectsPanel,
+  FiltersPanel,
+  SpeedPanel,
+  StickerPanel,
+  TextPanel,
+  TransformPanel,
+  TransitionPanel,
+  VolumePanel,
+} from '@/editor/panels';
+import { localAsset, pickAudio, pickMedia, pickText, probeDuration } from '@/editor/pick';
+import { clock, TimelineView } from '@/editor/timeline-view';
+import type { CanvasSize, Selection } from '@/editor/types';
+import { usePlayback } from '@/editor/use-playback';
+import { keyframeNear, setKeyframe, transformAt, type Keyframe, type Transform } from '@/engine/animate';
+import type { Look } from '@/engine/looks';
+import {
+  addAssets,
+  addItem,
   appendAssets,
-  ASPECTS,
   aspectRatio,
+  audioDuration,
+  captionsFromWords,
+  duplicateItem,
   duplicateSegment,
   locate,
+  moveItem,
   moveSegment,
+  newAudio,
+  newOverlay,
+  newSegment,
+  newText,
+  parseSrt,
+  patchItem,
   patchSegment,
-  patchText,
+  removeItem,
   removeSegment,
-  removeText,
+  replaceSegmentAsset,
+  rippleCut,
   segmentDuration,
   segmentStarts,
-  SPEEDS,
+  setTransition,
   splitAt,
+  splitItem,
   totalDuration,
+  trimItem,
   trimSegment,
+  type Asset,
+  type AudioItem,
+  type CaptionWord,
   type Edit,
   type Segment,
-  type TextItem,
 } from '@/engine/timeline';
 import { uid, useEdits } from '@/state/edits';
-import { Button, Chip, Row, T } from '@/ui/primitives';
+import { Button, Row, T } from '@/ui/primitives';
 import { colors, fonts } from '@/ui/theme';
 
-const TRACK_H = 54;
-const TEXT_H = 26;
-const SELECT = '#FFD23F';
-const TEXT_COLORS = ['#FFFFFF', '#FFD23F', '#FF7A1A', '#FF2E7E', '#3DDC84', '#2D6BFF', '#111111'];
-const RULER_STEPS = [0.5, 1, 2, 5, 10, 30, 60, 300];
+type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | null;
+type ToolDef = { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; disabled?: boolean; on?: boolean };
 
-type Selection = { kind: 'segment' | 'text'; id: string } | null;
-type PanelId = 'speed' | 'volume' | 'aspect' | null;
-
-function clock(t: number) {
-  const m = Math.floor(t / 60);
-  const s = t - m * 60;
-  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
-}
+const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'er', 'matlab', 'basically', 'actually', 'yaar', 'like', 'मतलब', 'यार', 'अं', 'हम्म']);
+const bare = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{M}]/gu, '');
 
 function useEditHistory(edit: Edit | undefined) {
   const setEdit = useEdits((s) => s.setEdit);
   const [history, setHistory] = useState<{ past: Edit[]; future: Edit[] }>({ past: [], future: [] });
+  // The edit as it was before an uncommitted live preview (a slider being dragged).
+  const [base, setBase] = useState<Edit | null>(null);
   return {
+    preview(next: Edit) {
+      if (!edit) return;
+      if (!base) setBase(edit);
+      setEdit(next);
+    },
     commit(next: Edit) {
-      if (!edit || next === edit) return;
-      setHistory((h) => ({ past: [...h.past, edit], future: [] }));
+      if (!edit) return;
+      const from = base ?? edit;
+      setBase(null);
+      if (next === from) return;
+      setHistory((h) => ({ past: [...h.past, from].slice(-100), future: [] }));
       setEdit(next);
     },
     undo() {
@@ -87,7 +125,7 @@ function IconButton({ icon, onPress, disabled, size = 20 }: { icon: keyof typeof
   );
 }
 
-function Tool({ icon, label, onPress, disabled, on }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; disabled?: boolean; on?: boolean }) {
+function Tool({ icon, label, onPress, disabled, on }: ToolDef) {
   return (
     <Pressable
       disabled={disabled}
@@ -95,58 +133,10 @@ function Tool({ icon, label, onPress, disabled, on }: { icon: keyof typeof Ionic
         Haptics.selectionAsync();
         onPress();
       }}
-      style={{ width: 62, alignItems: 'center', gap: 4, opacity: disabled ? 0.3 : 1 }}>
+      style={{ width: 64, alignItems: 'center', gap: 4, opacity: disabled ? 0.3 : 1 }}>
       <Ionicons name={icon} size={20} color={on ? colors.saffronText : colors.text} />
-      <T style={{ fontSize: 10.5, fontFamily: fonts.semibold, color: on ? colors.saffronText : '#C9C9D6' }}>{label}</T>
+      <T numberOfLines={1} style={{ fontSize: 10.5, fontFamily: fonts.semibold, color: on ? colors.saffronText : '#C9C9D6' }}>{label}</T>
     </Pressable>
-  );
-}
-
-/** A text overlay on the canvas. Drag to move it once it is selected. */
-function TextLayer({ item, canvas, selected, onSelect, onMove }: { item: TextItem; canvas: { w: number; h: number }; selected: boolean; onSelect: () => void; onMove: (x: number, y: number) => void }) {
-  const [drag, setDrag] = useState({ x: 0, y: 0 });
-  const pan = Gesture.Pan()
-    .runOnJS(true)
-    .enabled(selected)
-    .onChange((e) => setDrag({ x: e.translationX, y: e.translationY }))
-    .onEnd((e) => {
-      const clamp = (v: number) => Math.min(0.95, Math.max(0.05, v));
-      onMove(clamp(item.x + e.translationX / canvas.w), clamp(item.y + e.translationY / canvas.h));
-      setDrag({ x: 0, y: 0 });
-    });
-  return (
-    <GestureDetector gesture={pan}>
-      <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: item.y * canvas.h + drag.y - item.size, alignItems: 'center', transform: [{ translateX: (item.x - 0.5) * canvas.w + drag.x }] }}>
-        <Pressable onPress={onSelect} style={{ paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderStyle: 'dashed', borderColor: selected ? SELECT : 'transparent' }}>
-          <T style={{ fontFamily: fonts.heavy, fontSize: item.size, color: item.color, textAlign: 'center', textShadowColor: 'rgba(0,0,0,.7)', textShadowRadius: 4 }}>{item.text}</T>
-        </Pressable>
-      </View>
-    </GestureDetector>
-  );
-}
-
-function TrimHandle({ side, onTrim, scroller }: { side: 'in' | 'out'; onTrim: (dx: number) => void; scroller: RefObject<ScrollView | null> }) {
-  const [dx, setDx] = useState(0);
-  const pan = Gesture.Pan()
-    .runOnJS(true)
-    .activeOffsetX([-3, 3])
-    // The timeline must not scroll while a handle is being dragged.
-    .blocksExternalGesture(scroller)
-    .onChange((e) => setDx(e.translationX))
-    .onEnd((e) => onTrim(e.translationX))
-    .onFinalize(() => setDx(0));
-  return (
-    <GestureDetector gesture={pan}>
-      <View
-        hitSlop={{ left: 12, right: 12, top: 6, bottom: 6 }}
-        style={[
-          { position: 'absolute', top: 0, bottom: 0, width: 16, backgroundColor: SELECT, alignItems: 'center', justifyContent: 'center', transform: [{ translateX: dx }] },
-          // Kept inside the segment's bounds: iOS ignores touches outside a parent's frame.
-          side === 'in' ? { left: 0, borderTopLeftRadius: 6, borderBottomLeftRadius: 6 } : { right: 0, borderTopRightRadius: 6, borderBottomRightRadius: 6 },
-        ]}>
-        <View style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#111' }} />
-      </View>
-    </GestureDetector>
   );
 }
 
@@ -155,13 +145,13 @@ export default function Editor() {
   const edit = useEdits((s) => s.edits.find((e) => e.id === id));
   const history = useEditHistory(edit);
   const playback = usePlayback(() => useEdits.getState().edits.find((e) => e.id === id));
-  const { width: screenW, height: screenH } = useWindowDimensions();
-  const [pps, setPps] = useState(60);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [selection, setSelection] = useState<Selection>(null);
   const [panel, setPanel] = useState<PanelId>(null);
-  const scroller = useRef<ScrollView>(null);
-  const userScrolling = useRef(false);
-  const [pinchBase, setPinchBase] = useState(60);
+  const [area, setArea] = useState<CanvasSize>({ w: 0, h: 0 });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [recordingFrom, setRecordingFrom] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
   const { time, playing, seek } = playback;
 
   // Load the first frame once the draft is available.
@@ -170,11 +160,6 @@ export default function Editor() {
     if (ready) seek(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
-
-  // Keep the timeline under the fixed playhead while playing or after an edit.
-  useEffect(() => {
-    if (!userScrolling.current) scroller.current?.scrollTo({ x: time * pps, animated: false });
-  }, [time, pps]);
 
   if (!edit) {
     return (
@@ -188,255 +173,576 @@ export default function Editor() {
   const total = totalDuration(edit);
   const starts = segmentStarts(edit);
   const here = locate(edit, time);
-  const selectedText = selection?.kind === 'text' ? edit.texts.find((t) => t.id === selection.id) : undefined;
-  // Tools act on the tapped segment, or on whatever is under the playhead.
-  const target: Segment | undefined = (selection?.kind === 'segment' ? edit.main.find((s) => s.id === selection.id) : undefined) ?? here?.segment;
+  const selSegment = selection?.track === 'main' ? edit.main.find((s) => s.id === selection.id) : undefined;
+  const selOverlay = selection?.track === 'overlays' ? edit.overlays.find((o) => o.id === selection.id) : undefined;
+  const selText = selection?.track === 'texts' ? edit.texts.find((t) => t.id === selection.id) : undefined;
+  const selCaption = selection?.track === 'captions' ? edit.captions.find((c) => c.id === selection.id) : undefined;
+  const selAudio = selection?.track === 'audio' ? edit.audio.find((a) => a.id === selection.id) : undefined;
+  const selEffect = selection?.track === 'effects' ? edit.effects.find((e) => e.id === selection.id) : undefined;
+  // Clip tools act on the tapped segment, or on whatever is under the playhead.
+  const target: Segment | undefined = selSegment ?? here?.segment;
+  const targetAsset = target && edit.assets[target.assetId];
+  const targetStart = target ? starts[edit.main.indexOf(target)] : 0;
+  // The thing canvas gestures, keyframes and transform sliders apply to.
+  const visual = selSegment ?? selOverlay ?? selText;
+  const visualStart = selSegment ? starts[edit.main.indexOf(selSegment)] : ((selOverlay ?? selText)?.start ?? 0);
+  const visualDuration = selSegment ? segmentDuration(selSegment) : ((selOverlay ?? selText)?.duration ?? 0);
+  const visualTime = Math.min(Math.max(time - visualStart, 0), visualDuration);
 
   const ratio = aspectRatio(edit);
-  const canvasH = Math.min(screenH * 0.42, (screenW - 32) / ratio);
-  const canvas = { w: canvasH * ratio, h: canvasH };
-  const turned = (here?.segment.rotation ?? 0) % 180 !== 0;
+  const canvasH = Math.max(0, Math.min(area.h - 8, (area.w - 24) / ratio));
+  const canvas: CanvasSize = { w: canvasH * ratio, h: canvasH };
 
-  /** Apply an edit, record it for undo and re-sync the player. */
+  /** Apply an edit, record it for undo and re-sync the players. */
   function apply(next: Edit, at = time) {
     if (next === edit) return;
     history.commit(next);
-    seek(at, next);
+    seek(Math.min(at, totalDuration(next)), next);
+  }
+  /** `commit` false = live preview while a slider moves; true = final value. */
+  const change = (next: Edit, commit: boolean) => (commit ? apply(next) : history.preview(next));
+  const togglePanel = (p: PanelId) => setPanel(panel === p ? null : p);
+  const select = (s: Selection) => {
+    setSelection(s);
+    setPanel(null);
+  };
+  const current = () => useEdits.getState().edits.find((e) => e.id === id)!;
+
+  function patchVisual(patch: { transform?: Transform; keyframes?: Keyframe[] }, commit = true) {
+    if (selSegment) change(patchSegment(edit!, selSegment.id, patch), commit);
+    else if (selOverlay) change(patchItem(edit!, 'overlays', selOverlay.id, patch), commit);
+    else if (selText) change(patchItem(edit!, 'texts', selText.id, patch), commit);
+  }
+
+  /** Move, scale or fade the selected item. With keyframes on, this writes a keyframe at the playhead. */
+  function changeTransform(next: (t: Transform) => Transform, commit = true) {
+    if (!visual) return;
+    const value = next(transformAt(visual, visualTime));
+    patchVisual(visual.keyframes.length ? { keyframes: setKeyframe(visual.keyframes, visualTime, value) } : { transform: value }, commit);
+  }
+
+  function toggleKeyframe() {
+    if (!visual) return;
+    const existing = keyframeNear(visual.keyframes, visualTime);
+    patchVisual({ keyframes: existing ? visual.keyframes.filter((k) => k !== existing) : setKeyframe(visual.keyframes, visualTime, transformAt(visual, visualTime)) });
+  }
+
+  /** Run something slow (a server tool), showing its progress and any failure. */
+  async function run(label: string, job: (progress: (p: number) => void) => Promise<void>) {
+    setBusy(label);
+    try {
+      await job((p) => setBusy(`${label} ${Math.round(p * 100)}%`));
+    } catch (e) {
+      Alert.alert(e instanceof ServerError ? 'Media server' : 'Something went wrong', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function addClips() {
-    const assets = await pickVideos();
-    if (assets.length) apply(appendAssets(edit!, assets, assets.map(() => uid('seg'))));
+    const assets = await pickMedia();
+    if (assets.length) apply(appendAssets(current(), assets, assets.map(() => uid('seg'))));
   }
 
-  function trim(seg: Segment, side: 'in' | 'out', dx: number) {
-    const delta = (dx / pps) * seg.speed;
-    const next = trimSegment(edit!, seg.id, side === 'in' ? { in: seg.in + delta } : { out: seg.out + delta });
+  async function addOverlay() {
+    const [asset] = await pickMedia(['videos', 'images'], false);
+    if (!asset) return;
+    const item = newOverlay(uid('ovl'), time, { asset });
+    apply(addItem(addAssets(current(), [asset]), 'overlays', item));
+    setSelection({ track: 'overlays', id: item.id });
+  }
+
+  function addText() {
+    const item = newText(uid('txt'), Math.min(time, Math.max(0, total - 0.5)));
+    apply(addItem(edit!, 'texts', item));
+    setSelection({ track: 'texts', id: item.id });
+    setPanel('text');
+  }
+
+  async function addMusic() {
+    const asset = await pickAudio();
+    if (!asset) return;
+    const item = newAudio(uid('aud'), time, asset, 'music');
+    apply(addItem(addAssets(current(), [asset]), 'audio', item));
+    setSelection({ track: 'audio', id: item.id });
+  }
+
+  async function toggleRecording() {
+    if (recordingFrom === null) {
+      const permission = await AudioModule.requestRecordingPermissionsAsync();
+      if (!permission.granted) return Alert.alert('Microphone', 'Allow microphone access to record a voice-over.');
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setRecordingFrom(time);
+      if (!playing) playback.toggle();
+      return;
+    }
+    await recorder.stop();
+    playback.pause();
+    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+    const from = recordingFrom;
+    setRecordingFrom(null);
+    if (!recorder.uri) return;
+    const duration = await probeDuration(recorder.uri);
+    if (!duration) return;
+    const asset = localAsset(recorder.uri, 'audio', { duration, name: 'Voice-over' });
+    apply(addItem(addAssets(current(), [asset]), 'audio', newAudio(uid('aud'), from, asset, 'voiceover')), from);
+  }
+
+  function trimSeg(seg: Segment, side: 'in' | 'out', sourceSeconds: number) {
+    const next = trimSegment(edit!, seg.id, side === 'in' ? { in: seg.in + sourceSeconds } : { out: seg.out + sourceSeconds });
     // Park the playhead on the edge that moved so the result is visible.
     const index = next.main.findIndex((s) => s.id === seg.id);
     const start = segmentStarts(next)[index];
     apply(next, side === 'in' ? start : start + segmentDuration(next.main[index]) - 0.05);
   }
 
-  const pinch = Gesture.Pinch()
-    .runOnJS(true)
-    .onStart(() => setPinchBase(pps))
-    .onUpdate((e) => setPps(Math.min(600, Math.max(6, pinchBase * e.scale))));
+  function splitHere() {
+    if (selection && selection.track !== 'main') apply(splitItem(edit!, selection.track, selection.id, time, uid('itm')));
+    else apply(splitAt(edit!, time, uid('seg')));
+  }
 
-  const step = RULER_STEPS.find((s) => s * pps >= 56) ?? 600;
-  const ticks = Array.from({ length: Math.min(400, Math.floor(total / step) + 1) }, (_, i) => i * step);
+  function deleteSelected() {
+    if (selection && selection.track !== 'main') apply(removeItem(edit!, selection.track, selection.id));
+    else if (target) apply(removeSegment(edit!, target.id));
+    setSelection(null);
+    setPanel(null);
+  }
+
+  function duplicateSelected() {
+    if (selection && selection.track !== 'main') apply(duplicateItem(edit!, selection.track, selection.id, uid('itm')));
+    else if (target) apply(duplicateSegment(edit!, target.id, uid('seg')));
+  }
+
+  // ---- Server tools ----
+
+  const reverseClip = (seg: Segment, asset: Asset) =>
+    run('Reversing', async (p) => {
+      const reversed = await tools.reverse(asset, p);
+      apply(replaceSegmentAsset(current(), seg.id, reversed, { in: asset.duration - seg.out, out: asset.duration - seg.in }));
+    });
+
+  const freezeFrame = (asset: Asset, sourceTime: number) =>
+    run('Freezing frame', async () => {
+      const still = await tools.frame(asset, sourceTime);
+      const rightId = uid('seg');
+      const cut = splitAt(current(), time, rightId);
+      const at = cut.main.findIndex((s) => s.id === rightId);
+      const index = at >= 0 ? at : (locate(cut, time)?.index ?? 0) + 1;
+      const main = [...cut.main];
+      main.splice(index, 0, newSegment(uid('seg'), still));
+      apply({ ...addAssets(cut, [still]), main });
+    });
+
+  const extractAudio = (seg: Segment, asset: Asset, start: number) =>
+    run('Extracting audio', async () => {
+      const audio = await tools.extractAudio(asset);
+      const item = { ...newAudio(uid('aud'), start, audio, 'extracted'), in: seg.in, out: Math.min(seg.out, audio.duration) };
+      apply(addItem(addAssets(patchSegment(current(), seg.id, { muted: true }), [audio]), 'audio', item));
+    });
+
+  const cleanAudio = (seg: Segment, asset: Asset) =>
+    run('Cleaning audio', async (p) => {
+      const clean = await tools.denoise(asset, p);
+      apply(replaceSegmentAsset(current(), seg.id, clean, { in: seg.in, out: seg.out }));
+    });
+
+  /** Map something timed against source files onto the timeline, clip by clip. */
+  async function acrossClips<T>(fetchFor: (asset: Asset) => Promise<T[]>, place: (item: T, toTimeline: (sourceTime: number) => number, seg: Segment) => void) {
+    const e = current();
+    const cache = new Map<string, T[]>();
+    const segStarts = segmentStarts(e);
+    for (const [i, seg] of e.main.entries()) {
+      const asset = e.assets[seg.assetId];
+      if (!asset || asset.kind !== 'video') continue;
+      if (!cache.has(asset.id)) cache.set(asset.id, await fetchFor(asset));
+      for (const item of cache.get(asset.id)!) place(item, (t) => segStarts[i] + (t - seg.in) / seg.speed, seg);
+    }
+  }
+
+  const autoCaptions = () =>
+    run('Transcribing', async (p) => {
+      const status = await health();
+      if (!status) throw new ServerError('The media server is not running. Start it with "npm run server" in pipeline/.');
+      if (!status.whisper) throw new ServerError('Speech recognition is not set up on the media server yet. See pipeline/README.md.');
+      const words: CaptionWord[] = [];
+      await acrossClips(
+        async (asset) => (await tools.transcribe(asset, undefined, p)).words,
+        (w, at, seg) => {
+          if (w.t0 >= seg.in && w.t0 < seg.out) words.push({ text: w.text, t0: at(w.t0), t1: at(Math.min(w.t1, seg.out)) });
+        },
+      );
+      if (!words.length) throw new Error('No speech was found in this video.');
+      apply({ ...current(), captions: captionsFromWords(words.sort((a, b) => a.t0 - b.t0), 4, () => uid('cap')) });
+    });
+
+  const removeSilences = () =>
+    run('Finding silences', async () => {
+      const ranges: { start: number; end: number }[] = [];
+      await acrossClips(tools.silence, (r, at, seg) => {
+        // Leave a short breath either side of each cut.
+        const from = Math.max(r.start + 0.1, seg.in);
+        const to = Math.min(r.end - 0.1, seg.out);
+        if (to - from > 0.2) ranges.push({ start: at(from), end: at(to) });
+      });
+      if (!ranges.length) return Alert.alert('No silences found', 'There are no pauses longer than about half a second.');
+      apply(rippleCut(current(), ranges, () => uid('seg')));
+      Alert.alert('Silences removed', `${ranges.length} ${ranges.length === 1 ? 'pause' : 'pauses'} cut. Undo brings them back.`);
+    });
+
+  function removeFillers() {
+    const ranges = edit!.captions.flatMap((c) => (c.words ?? []).filter((w) => FILLERS.has(bare(w.text))).map((w) => ({ start: c.start + w.t0, end: c.start + w.t1 })));
+    if (!ranges.length) return Alert.alert('No filler words found', edit!.captions.some((c) => c.words) ? 'Nothing to remove.' : 'Generate auto captions first, so the words are known.');
+    const cleaned = { ...edit!, captions: edit!.captions.map((c) => (c.words ? { ...c, text: c.words.filter((w) => !FILLERS.has(bare(w.text))).map((w) => w.text).join(' ') } : c)) };
+    apply(rippleCut(cleaned, ranges, () => uid('seg')));
+  }
+
+  async function importSrt() {
+    const text = await pickText('*/*');
+    if (!text) return;
+    const captions = parseSrt(text, () => uid('cap'));
+    if (!captions.length) return Alert.alert('No captions found', 'That file does not look like an .srt subtitle file.');
+    apply({ ...current(), captions });
+  }
+
+  const detectBeats = (item: AudioItem, asset: Asset) =>
+    run('Finding beats', async () => {
+      const beats = await tools.beats(asset);
+      apply({ ...current(), markers: beats.filter((b) => b >= item.in && b <= item.out).map((b) => item.start + b - item.in) });
+    });
+
+  // ---- Toolbar for the current selection ----
+
+  const keyframed = !!visual && !!keyframeNear(visual.keyframes, visualTime);
+  const opens = (p: PanelId, icon: ToolDef['icon'], label: string): ToolDef => ({ icon, label, onPress: () => togglePanel(p), on: panel === p });
+  const back: ToolDef = { icon: 'chevron-back', label: 'Back', onPress: () => select(null) };
+  const split: ToolDef = { icon: 'cut-outline', label: 'Split', onPress: splitHere };
+  const keyframeTool: ToolDef = { icon: keyframed ? 'diamond' : 'diamond-outline', label: 'Keyframe', onPress: toggleKeyframe, on: keyframed };
+  const common: ToolDef[] = [
+    { icon: 'copy-outline', label: 'Duplicate', onPress: duplicateSelected },
+    { icon: 'trash-outline', label: 'Delete', onPress: deleteSelected },
+  ];
+
+  let toolbar: ToolDef[];
+  if (selText) {
+    toolbar = [back, opens('text', 'create-outline', 'Edit'), opens('animation', 'color-wand-outline', 'Animation'), opens('transform', 'resize-outline', 'Transform'), keyframeTool, split, ...common];
+  } else if (selOverlay) {
+    toolbar = [
+      back,
+      split,
+      ...(selOverlay.kind === 'video' ? [opens('volume', 'volume-high-outline', 'Volume')] : []),
+      opens('animation', 'color-wand-outline', 'Animation'),
+      ...(selOverlay.kind !== 'sticker' ? [opens('filters', 'color-filter-outline', 'Filters'), opens('adjust', 'options-outline', 'Adjust'), opens('blend', 'layers-outline', 'Blend')] : []),
+      opens('transform', 'resize-outline', 'Transform'),
+      keyframeTool,
+      { icon: 'swap-horizontal-outline', label: 'Flip', onPress: () => apply(patchItem(edit, 'overlays', selOverlay.id, { flipH: !selOverlay.flipH })) },
+      ...common,
+    ];
+  } else if (selCaption) {
+    toolbar = [back, opens('text', 'create-outline', 'Edit'), opens('captionStyle', 'brush-outline', 'Style'), split, ...common];
+  } else if (selAudio) {
+    const asset = edit.assets[selAudio.assetId];
+    toolbar = [back, split, opens('volume', 'volume-high-outline', 'Volume'), { icon: 'pulse-outline', label: 'Beats', onPress: () => asset && detectBeats(selAudio, asset) }, ...common];
+  } else if (selEffect) {
+    toolbar = [back, opens('effects', 'sparkles-outline', 'Effect'), ...common];
+  } else if (selSegment) {
+    const asset = edit.assets[selSegment.assetId];
+    const isVideo = asset?.kind === 'video';
+    const index = edit.main.indexOf(selSegment);
+    toolbar = [
+      back,
+      split,
+      ...(isVideo ? [opens('speed', 'speedometer-outline', 'Speed'), opens('volume', 'volume-high-outline', 'Volume')] : []),
+      opens('animation', 'color-wand-outline', 'Animation'),
+      opens('filters', 'color-filter-outline', 'Filters'),
+      opens('adjust', 'options-outline', 'Adjust'),
+      opens('transform', 'resize-outline', 'Transform'),
+      keyframeTool,
+      ...(isVideo
+        ? ([
+            { icon: 'play-back-outline', label: 'Reverse', onPress: () => reverseClip(selSegment, asset) },
+            { icon: 'snow-outline', label: 'Freeze', onPress: () => here && freezeFrame(asset, here.sourceTime) },
+            { icon: 'musical-note-outline', label: 'Extract audio', onPress: () => extractAudio(selSegment, asset, starts[index]) },
+            { icon: 'mic-off-outline', label: 'Denoise', onPress: () => cleanAudio(selSegment, asset) },
+          ] satisfies ToolDef[])
+        : []),
+      {
+        icon: 'repeat-outline',
+        label: 'Replace',
+        onPress: async () => {
+          const [next] = await pickMedia(['videos', 'images'], false);
+          if (next) apply(replaceSegmentAsset(current(), selSegment.id, next));
+        },
+      },
+      { icon: 'arrow-back-outline', label: 'Move left', disabled: index === 0, onPress: () => apply(moveSegment(edit, selSegment.id, -1), starts[Math.max(0, index - 1)]) },
+      { icon: 'arrow-forward-outline', label: 'Move right', disabled: index === edit.main.length - 1, onPress: () => apply(moveSegment(edit, selSegment.id, 1)) },
+      ...common,
+    ];
+  } else {
+    const marked = edit.markers.some((m) => Math.abs(m - time) < 0.05);
+    toolbar = [
+      { icon: 'add-circle-outline', label: 'Add clip', onPress: addClips },
+      { ...split, disabled: !here },
+      opens('audio', 'musical-notes-outline', 'Audio'),
+      { icon: 'text-outline', label: 'Text', onPress: addText },
+      { icon: 'layers-outline', label: 'Overlay', onPress: addOverlay },
+      opens('sticker', 'happy-outline', 'Stickers'),
+      opens('captions', 'chatbox-ellipses-outline', 'Captions'),
+      opens('effects', 'sparkles-outline', 'Effects'),
+      { ...opens('filters', 'color-filter-outline', 'Filters'), disabled: !target },
+      { ...opens('adjust', 'options-outline', 'Adjust'), disabled: !target },
+      opens('ai', 'flash-outline', 'AI tools'),
+      opens('canvas', 'crop-outline', 'Canvas'),
+      { icon: marked ? 'flag' : 'flag-outline', label: 'Marker', on: marked, onPress: () => apply({ ...edit, markers: marked ? edit.markers.filter((m) => Math.abs(m - time) >= 0.05) : [...edit.markers, time].sort((a, b) => a - b) }) },
+    ];
+  }
+
+  // ---- Options for the open tool ----
+
+  // Filters and Adjust act on the selected overlay, else the selected or current clip.
+  const lookOwner = selOverlay ?? target;
+  const setLook = (look: Look, commit: boolean) => {
+    if (selOverlay) change(patchItem(edit, 'overlays', selOverlay.id, { look }), commit);
+    else if (target) change(patchSegment(edit, target.id, { look }), commit);
+  };
+  const animated = selSegment ?? selOverlay ?? selText;
+  const inputStyle = { minHeight: 40, maxHeight: 76, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: colors.surface2, color: colors.text, fontFamily: fonts.medium } as const;
+
+  let body: React.ReactNode = null;
+  if (panel === 'filters' && lookOwner) body = <FiltersPanel look={lookOwner.look} onChange={setLook} onApplyAll={selOverlay ? undefined : () => apply({ ...edit, main: edit.main.map((s) => ({ ...s, look: lookOwner.look })) })} />;
+  else if (panel === 'adjust' && lookOwner) body = <AdjustPanel look={lookOwner.look} onChange={setLook} />;
+  else if (panel === 'speed' && selSegment) body = <SpeedPanel speed={selSegment.speed} onChange={(speed) => apply(patchSegment(edit, selSegment.id, { speed }))} />;
+  else if (panel === 'volume' && selSegment) body = <VolumePanel sound={selSegment} onChange={(p, commit) => change(patchSegment(edit, selSegment.id, p), commit)} />;
+  else if (panel === 'volume' && selOverlay) body = <VolumePanel sound={{ volume: selOverlay.volume, muted: selOverlay.muted }} onChange={(p, commit) => change(patchItem(edit, 'overlays', selOverlay.id, p), commit)} />;
+  else if (panel === 'volume' && selAudio) body = <VolumePanel sound={selAudio} onChange={(p, commit) => change(patchItem(edit, 'audio', selAudio.id, p), commit)} />;
+  else if (panel === 'animation' && animated)
+    body = (
+      <AnimationPanel
+        animation={animated.animation}
+        onChange={(animation) => {
+          // Jump to the start of the item so pressing play shows the animation.
+          if (selSegment) apply(patchSegment(edit, selSegment.id, { animation }), visualStart);
+          else if (selOverlay) apply(patchItem(edit, 'overlays', selOverlay.id, { animation }), visualStart);
+          else if (selText) apply(patchItem(edit, 'texts', selText.id, { animation }), visualStart);
+        }}
+      />
+    );
+  else if (panel === 'transition' && selSegment)
+    body = (
+      <TransitionPanel
+        transition={selSegment.transition}
+        onChange={(t) => {
+          const next = setTransition(edit, selSegment.id, t);
+          const i = next.main.findIndex((s) => s.id === selSegment.id);
+          // Jump to just before the cut so pressing play shows the transition.
+          apply(next, Math.max(0, (segmentStarts(next)[i + 1] ?? 0) - 0.6));
+        }}
+        onApplyAll={() => apply(setTransition(edit, selSegment.id, selSegment.transition, true))}
+      />
+    );
+  else if (panel === 'transform' && visual)
+    body = (
+      <TransformPanel
+        transform={transformAt(visual, visualTime)}
+        onChange={(t, commit) => changeTransform(() => t, commit)}
+        fit={selSegment?.fit}
+        onFit={selSegment ? (fit) => apply(patchSegment(edit, selSegment.id, { fit })) : undefined}
+        actions={
+          selSegment
+            ? [
+                { label: 'Rotate 90°', onPress: () => apply(patchSegment(edit, selSegment.id, { rotation: ((selSegment.rotation + 90) % 360) as Segment['rotation'] })) },
+                { label: 'Flip H', onPress: () => apply(patchSegment(edit, selSegment.id, { flipH: !selSegment.flipH })) },
+                { label: 'Flip V', onPress: () => apply(patchSegment(edit, selSegment.id, { flipV: !selSegment.flipV })) },
+              ]
+            : undefined
+        }
+      />
+    );
+  else if (panel === 'text' && selText) body = <TextPanel text={selText.text} style={selText.style} onText={(text, commit) => change(patchItem(edit, 'texts', selText.id, { text }), commit)} onStyle={(style, commit) => change(patchItem(edit, 'texts', selText.id, { style }), commit)} />;
+  else if (panel === 'text' && selCaption)
+    body = (
+      <View style={{ paddingHorizontal: 14 }}>
+        <TextInput
+          value={selCaption.text}
+          // Retyping a caption drops its word timings, so word highlighting falls back to the whole line.
+          onChangeText={(text) => history.preview(patchItem(edit, 'captions', selCaption.id, { text, words: undefined }))}
+          onEndEditing={(e) => apply(patchItem(edit, 'captions', selCaption.id, { text: e.nativeEvent.text, words: undefined }))}
+          multiline
+          style={inputStyle}
+        />
+      </View>
+    );
+  else if (panel === 'captionStyle') body = <CaptionStylePanel style={edit.captionStyle} onChange={(captionStyle, commit) => change({ ...edit, captionStyle }, commit)} />;
+  else if (panel === 'captions')
+    body = (
+      <ActionsPanel
+        actions={[
+          { label: 'Auto captions', icon: 'flash-outline', onPress: autoCaptions, busy: !!busy },
+          {
+            label: 'Add a line',
+            icon: 'add-outline',
+            onPress: () => {
+              const caption = { id: uid('cap'), start: time, duration: 2, text: 'Caption' };
+              apply(addItem(edit, 'captions', caption));
+              setSelection({ track: 'captions', id: caption.id });
+              setPanel('text');
+            },
+          },
+          { label: 'Import .srt', icon: 'document-text-outline', onPress: importSrt },
+          { label: 'Style', icon: 'brush-outline', onPress: () => setPanel('captionStyle') },
+          ...(edit.captions.length ? [{ label: 'Clear all', icon: 'trash-outline' as const, onPress: () => apply({ ...edit, captions: [] }) }] : []),
+        ]}
+      />
+    );
+  else if (panel === 'ai')
+    body = (
+      <ActionsPanel
+        actions={[
+          { label: 'Auto captions', icon: 'chatbox-ellipses-outline', onPress: autoCaptions, busy: !!busy },
+          { label: 'Remove silences', icon: 'remove-circle-outline', onPress: removeSilences, busy: !!busy },
+          { label: 'Remove filler words', icon: 'close-circle-outline', onPress: removeFillers },
+          ...(target && targetAsset?.kind === 'video' ? [{ label: 'Clean up audio', icon: 'mic-outline' as const, onPress: () => cleanAudio(target, targetAsset), busy: !!busy }] : []),
+        ]}
+      />
+    );
+  else if (panel === 'audio')
+    body = (
+      <ActionsPanel
+        actions={[
+          { label: 'Add music', icon: 'musical-notes-outline', onPress: addMusic },
+          { label: recordingFrom === null ? 'Record voice-over' : 'Stop recording', icon: recordingFrom === null ? 'mic-outline' : 'stop-circle-outline', onPress: toggleRecording },
+          ...(target && targetAsset?.kind === 'video' ? [{ label: 'Extract from clip', icon: 'musical-note-outline' as const, onPress: () => extractAudio(target, targetAsset, targetStart), busy: !!busy }] : []),
+        ]}
+      />
+    );
+  else if (panel === 'sticker')
+    body = (
+      <StickerPanel
+        onPick={(emoji) => {
+          const item = newOverlay(uid('ovl'), time, { emoji });
+          apply(addItem(edit, 'overlays', item));
+          setSelection({ track: 'overlays', id: item.id });
+        }}
+      />
+    );
+  else if (panel === 'effects')
+    body = (
+      <EffectsPanel
+        current={selEffect?.type}
+        onPick={(type) => {
+          if (selEffect) return apply(patchItem(edit, 'effects', selEffect.id, { type }), selEffect.start);
+          const item = { id: uid('fx'), type, start: time, duration: Math.min(2, Math.max(0.5, total - time)) };
+          apply(addItem(edit, 'effects', item));
+          setSelection({ track: 'effects', id: item.id });
+        }}
+      />
+    );
+  else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={selOverlay.blend} mask={selOverlay.mask} onBlend={(blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend }))} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
+  else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Top bar */}
-      <Row style={{ paddingHorizontal: 8, height: 46, justifyContent: 'space-between' }}>
-        <Row gap={0}>
-          <IconButton icon="chevron-back" onPress={() => router.back()} />
-          <Pressable onPress={() => setPanel(panel === 'aspect' ? null : 'aspect')} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 30, borderRadius: 99, backgroundColor: colors.surface2 }}>
-            <T style={{ fontFamily: fonts.bold, fontSize: 12.5 }}>{edit.aspect === 'original' ? 'Original' : edit.aspect}</T>
-            <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
-          </Pressable>
-        </Row>
-        <Row gap={0}>
-          <IconButton icon="arrow-undo" disabled={!history.canUndo} onPress={() => { const e = history.undo(); if (e) seek(time, e); }} />
-          <IconButton icon="arrow-redo" disabled={!history.canRedo} onPress={() => { const e = history.redo(); if (e) seek(time, e); }} />
-          <Pressable
-            onPress={() => Alert.alert('Export is not built yet', 'This build previews your edit. Rendering a final video file comes with the export engine.')}
-            style={{ marginLeft: 6, paddingHorizontal: 14, height: 32, borderRadius: 99, justifyContent: 'center', backgroundColor: colors.saffron }}>
-            <T style={{ fontFamily: fonts.heavy, fontSize: 13 }}>Export</T>
-          </Pressable>
-        </Row>
-      </Row>
-
-      {/* Canvas */}
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Pressable onPress={() => setSelection(null)} style={{ width: canvas.w, height: canvas.h, backgroundColor: '#000', overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
-          {here && (
-            <VideoView
-              player={playback.player}
-              nativeControls={false}
-              contentFit="contain"
-              // A quarter-turned clip is laid out sideways, then rotated back into the frame.
-              style={{ width: turned ? canvas.h : canvas.w, height: turned ? canvas.w : canvas.h, transform: [{ rotate: `${here.segment.rotation}deg` }, { scaleX: here.segment.flipH ? -1 : 1 }] }}
-            />
-          )}
-          {edit.texts
-            .filter((t) => time >= t.start && time < t.start + t.duration)
-            .map((t) => (
-              <TextLayer
-                key={t.id}
-                item={t}
-                canvas={canvas}
-                selected={selectedText?.id === t.id}
-                onSelect={() => setSelection({ kind: 'text', id: t.id })}
-                onMove={(x, y) => apply(patchText(edit, t.id, { x, y }))}
-              />
-            ))}
-        </Pressable>
-      </View>
-
-      {/* Transport */}
-      <Row style={{ justifyContent: 'center', height: 40 }} gap={14}>
-        <T style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.textMuted, width: 70, textAlign: 'right' }}>{clock(time)}</T>
-        <IconButton icon={playing ? 'pause' : 'play'} size={24} disabled={!here} onPress={playback.toggle} />
-        <T style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.textDim, width: 70 }}>{clock(total)}</T>
-      </Row>
-
-      {/* Timeline: scrolls under a fixed centre playhead; pinch to zoom */}
-      <GestureDetector gesture={pinch}>
-        <View style={{ height: 22 + TRACK_H + TEXT_H + 22 }}>
-          <ScrollView
-            ref={scroller}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            scrollEventThrottle={16}
-            contentContainerStyle={{ paddingHorizontal: screenW / 2 }}
-            onScrollBeginDrag={() => {
-              userScrolling.current = true;
-            }}
-            onScroll={(e) => {
-              if (userScrolling.current) seek(e.nativeEvent.contentOffset.x / pps);
-            }}
-            onScrollEndDrag={(e) => {
-              if (Math.abs(e.nativeEvent.velocity?.x ?? 0) < 0.05) userScrolling.current = false;
-            }}
-            onMomentumScrollEnd={() => {
-              userScrolling.current = false;
-            }}>
-            <View style={{ width: Math.max(total * pps, 1) }}>
-              <View style={{ height: 22 }}>
-                {ticks.map((t) => (
-                  <T key={t} style={{ position: 'absolute', left: t * pps, top: 4, fontSize: 9.5, color: colors.textDim }}>
-                    {step < 1 ? t.toFixed(1) : clock(t).replace(/\.\d$/, '')}
-                  </T>
-                ))}
-              </View>
-
-              <View style={{ height: TRACK_H, flexDirection: 'row' }}>
-                {edit.main.map((seg) => {
-                  const selected = selection?.kind === 'segment' && selection.id === seg.id;
-                  const width = segmentDuration(seg) * pps;
-                  return (
-                    <Pressable
-                      key={seg.id}
-                      onPress={() => setSelection({ kind: 'segment', id: seg.id })}
-                      style={{ width, height: TRACK_H, zIndex: selected ? 2 : 0 }}>
-                      <View style={{ flex: 1, marginHorizontal: 1, borderRadius: 6, overflow: 'hidden', borderWidth: 2, borderColor: selected ? SELECT : 'transparent' }}>
-                        <SegmentStrip asset={edit.assets[seg.assetId]} segment={seg} width={Math.max(width - 6, 1)} height={TRACK_H - 4} />
-                        {(seg.speed !== 1 || seg.muted) && width > 44 && (
-                          <View style={{ position: 'absolute', left: 4, top: 4, flexDirection: 'row', gap: 4, paddingHorizontal: 5, borderRadius: 4, backgroundColor: 'rgba(0,0,0,.65)' }}>
-                            {seg.speed !== 1 && <T style={{ fontSize: 9.5, fontFamily: fonts.bold }}>{seg.speed}x</T>}
-                            {seg.muted && <Ionicons name="volume-mute" size={11} color="#fff" />}
-                          </View>
-                        )}
-                      </View>
-                      {selected && <TrimHandle side="in" scroller={scroller} onTrim={(dx) => trim(seg, 'in', dx)} />}
-                      {selected && <TrimHandle side="out" scroller={scroller} onTrim={(dx) => trim(seg, 'out', dx)} />}
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <View style={{ height: TEXT_H, marginTop: 4 }}>
-                {edit.texts.map((t) => {
-                  const selected = selectedText?.id === t.id;
-                  return (
-                    <Pressable
-                      key={t.id}
-                      onPress={() => {
-                        setSelection({ kind: 'text', id: t.id });
-                        if (time < t.start || time >= t.start + t.duration) seek(t.start);
-                      }}
-                      style={{ position: 'absolute', left: t.start * pps, width: t.duration * pps, height: TEXT_H - 4, borderRadius: 5, paddingHorizontal: 6, justifyContent: 'center', backgroundColor: 'rgba(179,61,255,.35)', borderWidth: 1.5, borderColor: selected ? SELECT : colors.speakerB }}>
-                      <T numberOfLines={1} style={{ fontSize: 10.5, fontFamily: fonts.semibold }}>{t.text}</T>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          </ScrollView>
-          <View pointerEvents="none" style={{ position: 'absolute', left: screenW / 2 - 1, top: 16, bottom: 6, width: 2, borderRadius: 1, backgroundColor: '#fff' }} />
-        </View>
-      </GestureDetector>
-
-      {/* Option panels */}
-      <View style={{ minHeight: 50, justifyContent: 'center' }}>
-        {selectedText ? (
-          <Row style={{ paddingHorizontal: 12 }}>
-            <TextInput
-              value={selectedText.text}
-              onChangeText={(text) => useEdits.getState().setEdit(patchText(edit, selectedText.id, { text }))}
-              placeholder="Type your text"
-              placeholderTextColor={colors.textDim}
-              style={{ flex: 1, height: 38, borderRadius: 10, paddingHorizontal: 10, backgroundColor: colors.surface2, color: colors.text, fontFamily: fonts.medium }}
-            />
-            {TEXT_COLORS.map((c) => (
-              <Pressable key={c} onPress={() => apply(patchText(edit, selectedText.id, { color: c }))} style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: c, borderWidth: 2, borderColor: selectedText.color === c ? SELECT : colors.lineStrong }} />
-            ))}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* Top bar */}
+        <Row style={{ paddingHorizontal: 8, height: 46, justifyContent: 'space-between' }}>
+          <Row gap={0}>
+            <IconButton icon="chevron-back" onPress={() => router.back()} />
+            <Pressable onPress={() => togglePanel('canvas')} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 30, borderRadius: 99, backgroundColor: colors.surface2 }}>
+              <T style={{ fontFamily: fonts.bold, fontSize: 12.5 }}>{edit.aspect === 'original' ? 'Original' : edit.aspect}</T>
+              <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+            </Pressable>
           </Row>
-        ) : panel === 'aspect' ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
-            {ASPECTS.map((a) => (
-              <Chip key={a} label={a === 'original' ? 'Original' : a} selected={edit.aspect === a} onPress={() => apply({ ...edit, aspect: a })} />
-            ))}
-          </ScrollView>
-        ) : panel === 'speed' && target ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
-            {SPEEDS.map((s) => (
-              <Chip key={s} label={`${s}x`} selected={target.speed === s} onPress={() => apply(patchSegment(edit, target.id, { speed: s }))} />
-            ))}
-          </ScrollView>
-        ) : panel === 'volume' && target ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
-            <Chip label="Mute" selected={target.muted} onPress={() => apply(patchSegment(edit, target.id, { muted: !target.muted }))} />
-            {[0.25, 0.5, 0.75, 1].map((v) => (
-              <Chip key={v} label={`${v * 100}%`} selected={!target.muted && target.volume === v} onPress={() => apply(patchSegment(edit, target.id, { volume: v, muted: false }))} />
-            ))}
-          </ScrollView>
-        ) : !here ? (
-          <T variant="muted" style={{ textAlign: 'center' }}>Add a clip to start editing.</T>
-        ) : null}
-      </View>
+          <Row gap={0}>
+            <IconButton
+              icon="arrow-undo"
+              disabled={!history.canUndo}
+              onPress={() => {
+                const e = history.undo();
+                if (e) seek(Math.min(time, totalDuration(e)), e);
+              }}
+            />
+            <IconButton
+              icon="arrow-redo"
+              disabled={!history.canRedo}
+              onPress={() => {
+                const e = history.redo();
+                if (e) seek(Math.min(time, totalDuration(e)), e);
+              }}
+            />
+            <Pressable
+              disabled={!total}
+              onPress={() => {
+                playback.pause();
+                setExporting(true);
+              }}
+              style={{ marginLeft: 6, paddingHorizontal: 14, height: 32, borderRadius: 99, justifyContent: 'center', backgroundColor: colors.saffron, opacity: total ? 1 : 0.4 }}>
+              <T style={{ fontFamily: fonts.heavy, fontSize: 13 }}>Export</T>
+            </Pressable>
+          </Row>
+        </Row>
 
-      {/* Tools */}
-      <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: 10 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 6 }}>
-          {selectedText ? (
-            <>
-              <Tool icon="chevron-down" label="Done" onPress={() => setSelection(null)} />
-              <Tool icon="locate-outline" label="To playhead" onPress={() => apply(patchText(edit, selectedText.id, { start: time }))} />
-              <Tool icon="remove" label="Shorter" disabled={selectedText.duration <= 0.5} onPress={() => apply(patchText(edit, selectedText.id, { duration: selectedText.duration - 0.5 }))} />
-              <Tool icon="add" label="Longer" onPress={() => apply(patchText(edit, selectedText.id, { duration: selectedText.duration + 0.5 }))} />
-              <Tool icon="text" label="Smaller" disabled={selectedText.size <= 12} onPress={() => apply(patchText(edit, selectedText.id, { size: selectedText.size - 4 }))} />
-              <Tool icon="text" label="Bigger" disabled={selectedText.size >= 72} onPress={() => apply(patchText(edit, selectedText.id, { size: selectedText.size + 4 }))} />
-              <Tool icon="trash-outline" label="Delete" onPress={() => { apply(removeText(edit, selectedText.id)); setSelection(null); }} />
-            </>
-          ) : (
-            <>
-              <Tool icon="add-circle-outline" label="Add clip" onPress={addClips} />
-              <Tool icon="cut-outline" label="Split" disabled={!here} onPress={() => apply(splitAt(edit, time, uid('seg')))} />
-              <Tool icon="speedometer-outline" label="Speed" disabled={!target} on={panel === 'speed'} onPress={() => setPanel(panel === 'speed' ? null : 'speed')} />
-              <Tool icon="volume-high-outline" label="Volume" disabled={!target} on={panel === 'volume'} onPress={() => setPanel(panel === 'volume' ? null : 'volume')} />
-              <Tool
-                icon="text-outline"
-                label="Text"
-                disabled={!here}
-                onPress={() => {
-                  const textId = uid('txt');
-                  apply(addText(edit, textId, time));
-                  setSelection({ kind: 'text', id: textId });
-                }}
-              />
-              <Tool icon="refresh-outline" label="Rotate" disabled={!target} onPress={() => target && apply(patchSegment(edit, target.id, { rotation: ((target.rotation + 90) % 360) as Segment['rotation'] }))} />
-              <Tool icon="swap-horizontal-outline" label="Flip" disabled={!target} onPress={() => target && apply(patchSegment(edit, target.id, { flipH: !target.flipH }))} />
-              <Tool icon="copy-outline" label="Duplicate" disabled={!target} onPress={() => target && apply(duplicateSegment(edit, target.id, uid('seg')))} />
-              <Tool icon="arrow-back-outline" label="Move left" disabled={!target || edit.main[0]?.id === target.id} onPress={() => target && apply(moveSegment(edit, target.id, -1), starts[Math.max(0, edit.main.indexOf(target) - 1)])} />
-              <Tool icon="arrow-forward-outline" label="Move right" disabled={!target || edit.main[edit.main.length - 1]?.id === target.id} onPress={() => target && apply(moveSegment(edit, target.id, 1))} />
-              <Tool icon="trash-outline" label="Delete" disabled={!target} onPress={() => { if (target) { apply(removeSegment(edit, target.id)); setSelection(null); } }} />
-            </>
-          )}
-        </ScrollView>
-      </View>
+        {/* Canvas */}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }} onLayout={(e) => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+          {canvas.h > 0 && <EditCanvas edit={edit} time={time} playing={playing} players={playback.players} slotSegs={playback.slotSegs} canvas={canvas} selection={selection} onSelect={select} onTransform={(fn) => changeTransform(fn)} />}
+        </View>
+        <AudioTracks edit={edit} time={time} playing={playing} />
+
+        {/* Transport */}
+        <Row style={{ justifyContent: 'center', height: 38 }} gap={14}>
+          <T style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.textMuted, width: 70, textAlign: 'right' }}>{clock(time)}</T>
+          <IconButton icon={playing ? 'pause' : 'play'} size={24} disabled={!total} onPress={playback.toggle} />
+          <T style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.textDim, width: 70 }}>{clock(total)}</T>
+        </Row>
+
+        <TimelineView
+          edit={edit}
+          time={time}
+          selection={selection}
+          onSelect={select}
+          onScrub={seek}
+          onScrubStart={playback.pause}
+          onTrimSegment={trimSeg}
+          onMoveItem={(track, itemId, s) => {
+            const item = edit[track].find((i) => i.id === itemId);
+            if (item) apply(moveItem(edit, track, itemId, item.start + s));
+          }}
+          onTrimItem={(track, itemId, side, s) => apply(trimItem(edit, track, itemId, side, s))}
+          onTransition={(segmentId) => {
+            setSelection({ track: 'main', id: segmentId });
+            setPanel('transition');
+          }}
+        />
+
+        {/* Status, or the open tool's options */}
+        <View style={{ minHeight: 46, justifyContent: 'center', paddingVertical: 6 }}>
+          {busy ? (
+            <T variant="muted" style={{ textAlign: 'center' }}>{busy}…</T>
+          ) : recordingFrom !== null && panel !== 'audio' ? (
+            <Pressable onPress={toggleRecording}>
+              <T style={{ textAlign: 'center', color: colors.danger, fontFamily: fonts.bold }}>● Recording — tap to stop</T>
+            </Pressable>
+          ) : body ? (
+            body
+          ) : !total ? (
+            <T variant="muted" style={{ textAlign: 'center' }}>Add a clip to start editing.</T>
+          ) : selAudio ? (
+            <T variant="tiny" style={{ textAlign: 'center' }}>
+              {edit.assets[selAudio.assetId]?.name ?? 'Audio'} · {clock(audioDuration(selAudio))} · hold and drag to move
+            </T>
+          ) : null}
+        </View>
+
+        {/* Tools */}
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: 10 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 6 }}>
+            {toolbar.map((t) => (
+              <Tool key={t.label} {...t} />
+            ))}
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+      {exporting && <ExportSheet edit={edit} onClose={() => setExporting(false)} onUploaded={(uploaded) => useEdits.getState().setEdit({ ...current(), assets: uploaded.assets })} />}
     </SafeAreaView>
   );
 }

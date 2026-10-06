@@ -1,100 +1,199 @@
-import { useEventListener } from 'expo';
 import { useVideoPlayer, type VideoPlayer } from 'expo-video';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import { locate, segmentDuration, segmentStarts, totalDuration, type Edit, type Segment } from '@/engine/timeline';
-
-function cue(player: VideoPlayer, segment: Segment, sourceTime: number, play: boolean) {
-  player.playbackRate = segment.speed;
-  player.volume = segment.volume;
-  player.muted = segment.muted;
-  player.currentTime = sourceTime;
-  if (play) player.play();
-  else player.pause();
-}
+import { fadeGain } from '@/engine/animate';
+import { locate, mainFrameAt, segmentDuration, totalDuration, type Edit, type Location } from '@/engine/timeline';
 
 /**
- * Plays an Edit's main track through a single video player by hopping between
- * segments: seek to the segment's in point, apply its speed and volume, and jump to
- * the next segment when the out point is reached. Good enough to preview cuts; frame
- * accurate, gapless playback needs a native compositor.
+ * Preview clock for an Edit.
+ *
+ * A JavaScript clock is the master. Two video players are its slaves: one shows the
+ * current main-track segment, the other is preloaded with the next one so that cuts
+ * are gapless and both can run during a transition. Each tick the players are nudged
+ * to where the clock says they should be. Overlay videos and audio clips slave to the
+ * same clock in their own components.
  */
+
+type Slot = { segId: string | null; assetId: string | null; ready: boolean; playing: boolean; rate: number; volume: number; muted: boolean };
+const newSlot = (): Slot => ({ segId: null, assetId: null, ready: false, playing: false, rate: 1, volume: 1, muted: false });
+
+type Wanted = { loc: Location; gain: number; active: boolean };
+
+function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit, playing: boolean) {
+  if (!want) {
+    if (slot.playing) player.pause();
+    slot.playing = false;
+    slot.segId = null;
+    return;
+  }
+  const seg = want.loc.segment;
+  const asset = edit.assets[seg.assetId];
+  slot.segId = seg.id;
+  if (!asset || asset.kind !== 'video') {
+    if (slot.playing) player.pause();
+    slot.playing = false;
+    return;
+  }
+  if (slot.assetId !== asset.id) {
+    slot.assetId = asset.id;
+    slot.ready = false;
+    slot.playing = false;
+    player
+      .replaceAsync(asset.uri)
+      .then(() => {
+        if (slot.assetId === asset.id) slot.ready = true;
+      })
+      .catch(() => {});
+    return;
+  }
+  if (!slot.ready) return;
+  const shouldPlay = playing && want.active;
+  const target = want.active ? want.loc.sourceTime : seg.in;
+  // While playing, only correct real drift; while paused, follow the playhead exactly.
+  const tolerance = shouldPlay ? 0.3 * Math.max(1, seg.speed) : 0.03;
+  if (Math.abs(player.currentTime - target) > tolerance) player.currentTime = target;
+  if (slot.rate !== seg.speed) {
+    player.playbackRate = seg.speed;
+    slot.rate = seg.speed;
+  }
+  const volume = seg.volume * want.gain * fadeGain(seg.fadeIn, seg.fadeOut, want.loc.offset, segmentDuration(seg));
+  if (Math.abs(slot.volume - volume) > 0.01) {
+    player.volume = volume;
+    slot.volume = volume;
+  }
+  const muted = seg.muted || !want.active;
+  if (slot.muted !== muted) {
+    player.muted = muted;
+    slot.muted = muted;
+  }
+  if (slot.playing !== shouldPlay) {
+    if (shouldPlay) player.play();
+    else player.pause();
+    slot.playing = shouldPlay;
+  }
+}
+
+/** Point the two players at what the main track needs at `t`. Returns the segment each slot shows. */
+function sync(players: VideoPlayer[], slots: Slot[], edit: Edit, t: number, playing: boolean): (string | null)[] {
+  const frame = mainFrameAt(edit, t);
+  const wanted: Wanted[] = [];
+  if (frame?.b) {
+    wanted.push({ loc: frame.a, gain: 1 - frame.progress, active: true }, { loc: frame.b, gain: frame.progress, active: true });
+  } else if (frame) {
+    wanted.push({ loc: frame.a, gain: 1, active: true });
+    const next = edit.main[frame.a.index + 1];
+    if (next) wanted.push({ loc: { index: frame.a.index + 1, segment: next, start: 0, offset: 0, sourceTime: next.in }, gain: 0, active: false });
+  }
+  const assign: (Wanted | null)[] = [null, null];
+  const homeless: Wanted[] = [];
+  for (const w of wanted) {
+    const k = slots.findIndex((s, i) => s.segId === w.loc.segment.id && !assign[i]);
+    if (k >= 0) assign[k] = w;
+    else homeless.push(w);
+  }
+  for (const w of homeless) {
+    const k = assign.findIndex((a) => !a);
+    if (k >= 0) assign[k] = w;
+  }
+  assign.forEach((w, k) => drive(players[k], slots[k], w, edit, playing));
+  return assign.map((w) => (w?.active ? w.loc.segment.id : null));
+}
+
+/** Where the clock should be according to the player showing the current segment, if it is running. */
+function playerTime(player: VideoPlayer, slot: Slot, loc: Location) {
+  if (!slot.ready || !slot.playing || !player.playing) return null;
+  return loc.start + (player.currentTime - loc.segment.in) / loc.segment.speed;
+}
+
+function setup(player: VideoPlayer) {
+  player.timeUpdateEventInterval = 0;
+}
+
 export function usePlayback(getEdit: () => Edit | undefined) {
-  const player = useVideoPlayer(null, (p) => {
-    p.timeUpdateEventInterval = 0.05;
-  });
+  const p0 = useVideoPlayer(null, setup);
+  const p1 = useVideoPlayer(null, setup);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const state = useRef({ index: -1, assetId: '', loading: Promise.resolve(), token: 0, busy: false, wantPlay: false });
+  const [slotSegs, setSlotSegs] = useState<(string | null)[]>([null, null]);
+  const state = useRef({ time: 0, playing: false, raf: 0, last: 0, frame: 0, slots: [newSlot(), newSlot()], shown: [null, null] as (string | null)[] });
 
-  async function load(edit: Edit, at: number, play: boolean) {
+  function apply(edit: Edit, t: number, play: boolean) {
     const st = state.current;
-    const t = Math.min(Math.max(at, 0), totalDuration(edit));
-    const loc = locate(edit, t);
-    const token = ++st.token;
-    st.wantPlay = play && !!loc;
-    setTime(loc ? t : 0);
-    setPlaying(st.wantPlay);
-    if (!loc) {
-      player.pause();
-      return;
-    }
-    st.busy = true;
-    st.index = loc.index;
-    const asset = edit.assets[loc.segment.assetId];
-    if (st.assetId !== asset.id) {
-      st.assetId = asset.id;
-      st.loading = player.replaceAsync(asset.uri).catch(() => {});
-    }
-    await st.loading;
-    if (token !== st.token) return;
-    cue(player, loc.segment, loc.sourceTime, play);
-    st.busy = false;
-  }
-
-  function advance(edit: Edit) {
-    const st = state.current;
-    const seg = edit.main[st.index];
-    if (!seg) return;
-    const end = segmentStarts(edit)[st.index] + segmentDuration(seg);
-    if (st.index + 1 < edit.main.length) {
-      load(edit, end, true);
-    } else {
-      player.pause();
-      st.wantPlay = false;
-      setPlaying(false);
-      setTime(end);
+    st.time = t;
+    st.playing = play;
+    const shown = sync([p0, p1], st.slots, edit, t, play);
+    if (shown[0] !== st.shown[0] || shown[1] !== st.shown[1]) {
+      st.shown = shown;
+      setSlotSegs(shown);
     }
   }
 
-  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
+  function tick(now: number) {
     const st = state.current;
     const edit = getEdit();
-    const seg = edit?.main[st.index];
-    if (!edit || !seg || st.busy || !st.wantPlay) return;
-    if (currentTime >= seg.out - 0.03) advance(edit);
-    else setTime(segmentStarts(edit)[st.index] + Math.max(0, currentTime - seg.in) / seg.speed);
-  });
+    if (!edit || !st.playing) return;
+    const dt = Math.min(0.1, (now - st.last) / 1000);
+    st.last = now;
+    let t = st.time + dt;
+    // Pull the clock gently towards the video so captions and text stay in step with the picture.
+    const here = locate(edit, st.time);
+    const k = here ? st.slots.findIndex((s) => s.segId === here.segment.id) : -1;
+    const seen = here && k >= 0 ? playerTime(k === 0 ? p0 : p1, st.slots[k], here) : null;
+    if (seen !== null && Math.abs(seen - t) < 0.5) t += Math.min(0.02, Math.max(-0.02, (seen - t) * 0.1));
+    const total = totalDuration(edit);
+    const ended = t >= total;
+    apply(edit, ended ? total : t, !ended);
+    // Rendering every other frame keeps the editor responsive on slower phones.
+    if (ended || st.frame++ % 2 === 0) setTime(st.time);
+    if (ended) setPlaying(false);
+    else st.raf = requestAnimationFrame(tick);
+  }
 
-  // The source file can end a few frames before its reported duration.
-  useEventListener(player, 'playToEnd', () => {
-    const edit = getEdit();
-    if (edit && state.current.wantPlay && !state.current.busy) advance(edit);
-  });
+  useEffect(() => {
+    const st = state.current;
+    return () => cancelAnimationFrame(st.raf);
+  }, []);
+
+  function stop() {
+    cancelAnimationFrame(state.current.raf);
+    setPlaying(false);
+  }
 
   return {
-    player,
+    players: [p0, p1],
+    slotSegs,
     time,
     playing,
-    /** Move the playhead. Pass the edit explicitly right after changing it. */
+    /** Move the playhead and pause. Pass the edit explicitly right after changing it. */
     seek(t: number, edit = getEdit()) {
-      if (edit) load(edit, t, false);
+      if (!edit) return;
+      stop();
+      const clamped = Math.min(Math.max(t, 0), totalDuration(edit));
+      apply(edit, clamped, false);
+      setTime(clamped);
+    },
+    pause() {
+      const edit = getEdit();
+      stop();
+      if (edit) apply(edit, state.current.time, false);
     },
     toggle() {
       const edit = getEdit();
+      const st = state.current;
       if (!edit) return;
-      if (playing) load(edit, time, false);
-      else load(edit, time >= totalDuration(edit) - 0.05 ? 0 : time, true);
+      if (st.playing) {
+        stop();
+        apply(edit, st.time, false);
+        return;
+      }
+      const from = st.time >= totalDuration(edit) - 0.05 ? 0 : st.time;
+      apply(edit, from, true);
+      setTime(from);
+      setPlaying(true);
+      st.last = performance.now();
+      st.raf = requestAnimationFrame(tick);
     },
   };
 }
+
+export type Playback = ReturnType<typeof usePlayback>;

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import { appendAssets, type Asset, type Edit } from '@/engine/timeline';
+import { appendAssets, blankEdit, type Asset, type Edit } from '@/engine/timeline';
 
 type State = {
   edits: Edit[];
@@ -21,9 +21,7 @@ export const useEdits = create<State>()(
       edits: [],
 
       createEdit(assets) {
-        const now = Date.now();
-        const blank: Edit = { id: uid('edt'), name: `Edit ${get().edits.length + 1}`, aspect: 'original', assets: {}, main: [], texts: [], createdAt: now, updatedAt: now };
-        const edit = appendAssets(blank, assets, assets.map(() => uid('seg')));
+        const edit = appendAssets(blankEdit(uid('edt'), `Edit ${get().edits.length + 1}`, Date.now()), assets, assets.map(() => uid('seg')));
         set((s) => ({ edits: [edit, ...s.edits] }));
         return edit.id;
       },
@@ -36,6 +34,7 @@ export const useEdits = create<State>()(
         set((s) => ({ edits: s.edits.filter((e) => e.id !== id) }));
       },
     }),
-    { name: 'ff.edits', storage: createJSONStorage(() => AsyncStorage) },
+    // Bump the name when the Edit shape changes incompatibly; old drafts are dropped.
+    { name: 'ff.edits.v2', storage: createJSONStorage(() => AsyncStorage) },
   ),
 );

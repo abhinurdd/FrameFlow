@@ -39,7 +39,9 @@
         {
           "photosPermission": "FrameFlow needs access to your videos so you can edit them."
         }
-      ]
+      ],
+      "expo-audio",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

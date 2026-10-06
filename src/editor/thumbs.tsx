@@ -41,14 +41,24 @@ export function SegmentStrip({ asset, segment, width, height }: { asset: Asset; 
   const [thumbs, setThumbs] = useState<VideoThumbnail[]>([]);
   useEffect(() => {
     let alive = true;
+    if (asset.kind !== 'video') return;
     loadThumbs(asset).then((t) => alive && setThumbs(t));
     return () => {
       alive = false;
     };
   }, [asset]);
 
-  const tile = Math.min(92, Math.max(40, height * (asset.width / asset.height)));
+  const tile = Math.min(92, Math.max(40, height * ((asset.width || 16) / (asset.height || 9))));
   const count = Math.max(1, Math.ceil(width / tile));
+  if (asset.kind === 'image') {
+    return (
+      <View style={{ width, height, flexDirection: 'row', overflow: 'hidden', backgroundColor: colors.surface2 }}>
+        {Array.from({ length: count }, (_, k) => (
+          <Image key={k} source={{ uri: asset.uri }} style={{ width: width / count, height }} contentFit="cover" />
+        ))}
+      </View>
+    );
+  }
   return (
     <View style={{ width, height, flexDirection: 'row', overflow: 'hidden', backgroundColor: colors.surface2 }}>
       {thumbs.length > 0 &&

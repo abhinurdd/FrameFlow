@@ -7,7 +7,10 @@ import {
   Inter_900Black,
   useFonts,
 } from '@expo-google-fonts/inter';
+import { Baloo2_400Regular, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { NotoSansDevanagari_600SemiBold, NotoSansDevanagari_800ExtraBold } from '@expo-google-fonts/noto-sans-devanagari';
+import { PlayfairDisplay_400Regular, PlayfairDisplay_700Bold, PlayfairDisplay_900Black } from '@expo-google-fonts/playfair-display';
+import { SpaceMono_400Regular, SpaceMono_700Bold } from '@expo-google-fonts/space-mono';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -37,6 +40,15 @@ function RootNavigator() {
     Inter_900Black,
     NotoSansDevanagari_600SemiBold,
     NotoSansDevanagari_800ExtraBold,
+    // Editor text fonts
+    PlayfairDisplay_400Regular,
+    PlayfairDisplay_700Bold,
+    PlayfairDisplay_900Black,
+    SpaceMono_400Regular,
+    SpaceMono_700Bold,
+    Baloo2_400Regular,
+    Baloo2_700Bold,
+    Baloo2_800ExtraBold,
   });
   const ready = fontsLoaded && !loading;
 

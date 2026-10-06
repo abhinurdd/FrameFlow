@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { pickVideos } from '@/editor/pick';
+import { pickMedia } from '@/editor/pick';
 import { duration } from '@/engine/types';
 import { totalDuration } from '@/engine/timeline';
 import { useAuth } from '@/services/auth';
@@ -30,7 +30,7 @@ export default function Home() {
 
   const openEditor = (id: string) => router.push({ pathname: '/editor/[id]', params: { id } });
   const startEdit = async () => {
-    const assets = await pickVideos();
+    const assets = await pickMedia();
     if (assets.length) openEditor(createEdit(assets));
   };
 
