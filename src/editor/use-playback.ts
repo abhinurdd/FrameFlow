@@ -2,6 +2,7 @@ import { useVideoPlayer, type VideoPlayer } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
 
 import { fadeGain } from '@/engine/animate';
+import { offsetAt, speedAt } from '@/engine/speed';
 import { locate, mainFrameAt, segmentDuration, totalDuration, type Edit, type Location } from '@/engine/timeline';
 
 /**
@@ -56,11 +57,13 @@ function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit,
   const shouldPlay = playing && want.active;
   const target = want.active ? want.loc.sourceTime : seg.in;
   // While playing, only correct real drift; while paused, follow the playhead exactly.
-  const tolerance = shouldPlay ? 0.3 * Math.max(1, seg.speed) : 0.03;
+  // On a speed curve the rate follows the curve as the clip plays.
+  const rate = Math.min(16, Math.max(0.1, speedAt(seg, target)));
+  const tolerance = shouldPlay ? 0.3 * Math.max(1, rate) : 0.03;
   if (Math.abs(player.currentTime - target) > tolerance) player.currentTime = target;
-  if (slot.rate !== seg.speed) {
-    player.playbackRate = seg.speed;
-    slot.rate = seg.speed;
+  if (Math.abs(slot.rate - rate) > 0.02) {
+    player.playbackRate = rate;
+    slot.rate = rate;
   }
   const volume = seg.volume * want.gain * fadeGain(seg.fadeIn, seg.fadeOut, want.loc.offset, segmentDuration(seg));
   if (Math.abs(slot.volume - volume) > 0.01) {
@@ -108,7 +111,7 @@ function sync(players: VideoPlayer[], slots: Slot[], edit: Edit, t: number, play
 /** Where the clock should be according to the player showing the current segment, if it is running. */
 function playerTime(player: VideoPlayer, slot: Slot, loc: Location) {
   if (!slot.ready || !slot.playing || !player.playing) return null;
-  return loc.start + (player.currentTime - loc.segment.in) / loc.segment.speed;
+  return loc.start + offsetAt(loc.segment, player.currentTime);
 }
 
 function setup(player: VideoPlayer) {

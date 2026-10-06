@@ -5,6 +5,7 @@
 
 import { join } from 'node:path';
 
+import { offsetAt } from '../../src/engine/speed.ts';
 import { segmentDuration, segmentStarts, totalDuration, transitionDuration, type Edit } from '../../src/engine/timeline.ts';
 
 import { ffmpeg, sec } from './ff.ts';
@@ -33,15 +34,15 @@ const num = (v: number) => Number(v.toFixed(6)).toString();
  * `fadeGain` written out: min(clamp(t / fadeIn), clamp((duration - t) / fadeOut)).
  * `rampIn`/`rampOut` are the linear crossfades of a transition, and multiply it.
  */
-export function gainExpression(volume: number, fadeIn: number, fadeOut: number, duration: number, rampIn = 0, rampOut = 0) {
+export function gainExpression(volume: number, fadeIn: number, fadeOut: number, duration: number, rampIn = 0, rampOut = 0, t = 't') {
   const fades: string[] = [];
-  if (fadeIn > 0) fades.push(`clip(t/${num(fadeIn)},0,1)`);
-  if (fadeOut > 0) fades.push(`clip((${num(duration)}-t)/${num(fadeOut)},0,1)`);
+  if (fadeIn > 0) fades.push(`clip(${t}/${num(fadeIn)},0,1)`);
+  if (fadeOut > 0) fades.push(`clip((${num(duration)}-${t})/${num(fadeOut)},0,1)`);
   const parts = [num(volume)];
   if (fades.length === 2) parts.push(`min(${fades[0]},${fades[1]})`);
   else if (fades.length) parts.push(fades[0]);
-  if (rampIn > 0) parts.push(`clip(t/${num(rampIn)},0,1)`);
-  if (rampOut > 0) parts.push(`clip((${num(duration)}-t)/${num(rampOut)},0,1)`);
+  if (rampIn > 0) parts.push(`clip(${t}/${num(rampIn)},0,1)`);
+  if (rampOut > 0) parts.push(`clip((${num(duration)}-${t})/${num(rampOut)},0,1)`);
   return parts.join('*');
 }
 
@@ -56,8 +57,22 @@ export function audioClips(edit: Edit, mediaOf: (assetId: string) => Media | und
     const media = mediaOf(s.assetId);
     if (!audible(media, s.volume, s.muted)) return;
     const duration = segmentDuration(s);
-    const gain = gainExpression(s.volume, s.fadeIn, s.fadeOut, duration, i > 0 ? transitionDuration(edit, i - 1) : 0, transitionDuration(edit, i));
-    clips.push({ file: mediaPath(media), in: s.in, length: s.out - s.in, speed: s.speed, start: starts[i], gain });
+    const rampIn = i > 0 ? transitionDuration(edit, i - 1) : 0;
+    const rampOut = transitionDuration(edit, i);
+    if (!s.curve) {
+      clips.push({ file: mediaPath(media), in: s.in, length: s.out - s.in, speed: s.speed, start: starts[i], gain: gainExpression(s.volume, s.fadeIn, s.fadeOut, duration, rampIn, rampOut) });
+      return;
+    }
+    // A speed curve: the sound is cut into short slices, each at the average speed of its stretch.
+    const slices = Math.min(24, Math.max(4, Math.ceil(duration / 0.25)));
+    for (let k = 0; k < slices; k++) {
+      const from = s.in + ((s.out - s.in) * k) / slices;
+      const to = s.in + ((s.out - s.in) * (k + 1)) / slices;
+      const t0 = offsetAt(s, from);
+      const t1 = offsetAt(s, to);
+      const gain = gainExpression(s.volume, s.fadeIn, s.fadeOut, duration, rampIn, rampOut, `(t+${num(t0)})`);
+      clips.push({ file: mediaPath(media), in: from, length: to - from, speed: (to - from) / (t1 - t0), start: starts[i] + t0, gain });
+    }
   });
   for (const o of edit.overlays) {
     const media = o.assetId ? mediaOf(o.assetId) : undefined;

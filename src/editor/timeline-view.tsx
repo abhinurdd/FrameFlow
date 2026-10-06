@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 
-import { audioDuration, segmentDuration, segmentStarts, totalDuration, transitionDuration, type Edit, type Segment, type TrackId } from '@/engine/timeline';
+import { audioDuration, averageSpeed, segmentDuration, segmentStarts, totalDuration, transitionDuration, type Edit, type Segment, type TrackId } from '@/engine/timeline';
 import { T } from '@/ui/primitives';
 import { colors, fonts } from '@/ui/theme';
 
@@ -268,17 +268,18 @@ export function TimelineView({
                         style={{ position: 'absolute', left: starts[i] * pps, width, height: MAIN_H, zIndex: selected ? 2 : 0 }}>
                         <View style={{ flex: 1, marginHorizontal: 1, borderRadius: 7, overflow: 'hidden', borderWidth: 2, borderColor: selected ? colors.select : 'transparent' }}>
                           {asset && <SegmentStrip asset={asset} segment={seg} width={Math.max(width - 6, 1)} height={MAIN_H - 4} from={viewFrom - starts[i] * pps} to={viewTo - starts[i] * pps} />}
-                          {width > 48 && (seg.speed !== 1 || seg.muted || seg.look.filter !== 'none' || seg.keyframes.length > 0) && (
+                          {width > 48 && (seg.speed !== 1 || !!seg.curve || seg.muted || seg.look.filter !== 'none' || seg.keyframes.length > 0) && (
                             <View style={{ position: 'absolute', left: selected ? 20 : 4, top: 4, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 5, height: 16, borderRadius: 4, backgroundColor: colors.scrim }}>
                               {seg.speed !== 1 && <T style={{ fontSize: 10.5, fontFamily: fonts.bold }}>{seg.speed}x</T>}
+                              {seg.curve && <Ionicons name="analytics" size={11} color={colors.white} />}
                               {seg.muted && <Ionicons name="volume-mute" size={11} color={colors.white} />}
                               {seg.look.filter !== 'none' && <Ionicons name="color-filter" size={11} color={colors.white} />}
                               {seg.keyframes.length > 0 && <Ionicons name="diamond" size={9} color={colors.white} />}
                             </View>
                           )}
                         </View>
-                        {selected && <Handle side="start" label="Trim clip start" height={MAIN_H} scroller={scroller} onDrag={(d) => onTrimSegment(seg, 'in', (d / pps) * seg.speed)} />}
-                        {selected && <Handle side="end" label="Trim clip end" height={MAIN_H} scroller={scroller} onDrag={(d) => onTrimSegment(seg, 'out', (d / pps) * seg.speed)} />}
+                        {selected && <Handle side="start" label="Trim clip start" height={MAIN_H} scroller={scroller} onDrag={(d) => onTrimSegment(seg, 'in', (d / pps) * averageSpeed(seg))} />}
+                        {selected && <Handle side="end" label="Trim clip end" height={MAIN_H} scroller={scroller} onDrag={(d) => onTrimSegment(seg, 'out', (d / pps) * averageSpeed(seg))} />}
                       </Pressable>
                     );
                   })}

@@ -277,7 +277,8 @@ export class Painter {
       rotation: tr.rotation,
       opacity: tr.opacity,
       // Stickers take no look in the app.
-      look: o.kind === 'sticker' ? NO_LOOK : o.look,
+      // Nor does a keyed overlay: the preview cannot grade a picture with holes in it.
+      look: o.kind === 'sticker' || o.chroma ? NO_LOOK : o.look,
       // Only photos blend: the app's preview cannot blend a playing video, so export must not either.
       blend: o.kind === 'image' ? o.blend : 'normal',
       mask: o.mask,

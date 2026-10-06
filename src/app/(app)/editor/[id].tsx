@@ -17,6 +17,7 @@ import {
   CanvasPanel,
   CaptionStylePanel,
   ChoicePanel,
+  ChromaPanel,
   EffectsPanel,
   FiltersPanel,
   PromptPanel,
@@ -56,7 +57,6 @@ import {
   patchCaptionWord,
   patchItem,
   patchSegment,
-  rampSegment,
   relink,
   removeItem,
   replaceSegmentAsset,
@@ -80,7 +80,7 @@ import { uid, useEdits } from '@/state/edits';
 import { Button, Row, T } from '@/ui/primitives';
 import { colors, fonts } from '@/ui/theme';
 
-type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | 'tts' | 'voice' | 'rename' | 'transcript' | null;
+type PanelId = 'filters' | 'adjust' | 'speed' | 'volume' | 'animation' | 'transition' | 'transform' | 'text' | 'captions' | 'captionStyle' | 'canvas' | 'sticker' | 'effects' | 'blend' | 'audio' | 'ai' | 'tts' | 'voice' | 'rename' | 'transcript' | 'chroma' | null;
 
 const PANEL_TITLES: Record<NonNullable<PanelId>, string> = {
   filters: 'Filters',
@@ -103,6 +103,7 @@ const PANEL_TITLES: Record<NonNullable<PanelId>, string> = {
   voice: 'Voice effect',
   rename: 'Rename project',
   transcript: 'Transcript',
+  chroma: 'Green screen',
 };
 
 const FILLERS = new Set(['um', 'uh', 'umm', 'uhh', 'hmm', 'er', 'matlab', 'basically', 'actually', 'yaar', 'toh', 'na', 'like', 'मतलब', 'यार', 'तो', 'ना', 'अं', 'हम्म']);
@@ -396,7 +397,7 @@ export default function Editor() {
 
   const extractAudio = (seg: Segment, asset: Asset, start: number) => {
     // The separated audio would play at normal speed and drift out of sync.
-    if (seg.speed !== 1) return Alert.alert('Set the speed to 1x first', 'Audio can only be separated from a clip playing at normal speed.');
+    if (seg.speed !== 1 || seg.curve) return Alert.alert('Set the speed to 1x first', 'Audio can only be separated from a clip playing at normal speed.');
     return run('Extracting audio', async () => {
       const audio = await tools.extractAudio(asset);
       const item = { ...newAudio(uid('aud'), start, audio, 'extracted'), in: seg.in, out: Math.min(seg.out, audio.duration) };
@@ -527,7 +528,14 @@ export default function Editor() {
       split,
       ...(selOverlay.kind === 'video' ? [opens('volume', 'volume-high-outline', 'Volume')] : []),
       opens('animation', 'color-wand-outline', 'Animation'),
-      ...(selOverlay.kind !== 'sticker' ? [opens('filters', 'color-filter-outline', 'Filters'), opens('adjust', 'options-outline', 'Adjust'), opens('blend', 'layers-outline', selOverlay.kind === 'image' ? 'Blend' : 'Mask')] : []),
+      ...(selOverlay.kind !== 'sticker'
+        ? [
+            opens('chroma', 'color-fill-outline', 'Chroma'),
+            // A keyed picture has holes in it, which filters cannot follow.
+            ...(selOverlay.chroma ? [] : [opens('filters', 'color-filter-outline', 'Filters'), opens('adjust', 'options-outline', 'Adjust')]),
+            opens('blend', 'layers-outline', selOverlay.kind === 'image' ? 'Blend' : 'Mask'),
+          ]
+        : []),
       opens('transform', 'resize-outline', 'Transform'),
       keyframeTool,
       { icon: 'swap-horizontal-outline', label: 'Flip', onPress: () => apply(patchItem(edit, 'overlays', selOverlay.id, { flipH: !selOverlay.flipH })) },
@@ -608,7 +616,16 @@ export default function Editor() {
   let body: React.ReactNode = null;
   if (panel === 'filters' && lookOwner) body = <FiltersPanel look={lookOwner.look} onChange={setLook} onApplyAll={selOverlay ? undefined : () => apply({ ...edit, main: edit.main.map((s) => ({ ...s, look: lookOwner.look })) })} />;
   else if (panel === 'adjust' && lookOwner) body = <AdjustPanel look={lookOwner.look} onChange={setLook} />;
-  else if (panel === 'speed' && selSegment) body = <SpeedPanel speed={selSegment.speed} onChange={(speed) => apply(patchSegment(edit, selSegment.id, { speed }))} onRamp={(speeds) => apply(rampSegment(edit, selSegment.id, speeds, () => uid('seg')), visualStart)} />;
+  else if (panel === 'speed' && selSegment) body = (
+      <SpeedPanel
+        key={selSegment.id}
+        speed={selSegment.speed}
+        curve={selSegment.curve}
+        onSpeed={(speed) => apply(patchSegment(edit, selSegment.id, { speed }))}
+        // Jump to the clip's start on a preset, so pressing play shows the whole curve.
+        onCurve={(curve, commit) => (commit ? apply(patchSegment(edit, selSegment.id, { curve }), visualStart) : history.preview(relink(edit, patchSegment(edit, selSegment.id, { curve }))))}
+      />
+    );
   else if (panel === 'voice' && selSegment && targetAsset) body = <ChoicePanel label="Voice" options={VOICE_EFFECTS} onPick={(effect) => changeVoice(selSegment, targetAsset, effect)} />;
   else if (panel === 'tts') body = <PromptPanel placeholder="Type what should be spoken" action="Speak" busy={!!busy} onSubmit={speak} />;
   else if (panel === 'volume' && selSegment) body = <VolumePanel sound={selSegment} onChange={(p, commit) => change(patchSegment(edit, selSegment.id, p), commit)} />;
@@ -759,6 +776,7 @@ export default function Editor() {
   else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={selOverlay.blend} mask={selOverlay.mask} // A playing video cannot be blended in the live preview, so the option is only offered for photos.
         onBlend={selOverlay.kind === 'image' ? (blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend })) : undefined} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
   else if (panel === 'rename') body = <PromptPanel key={edit.id} initial={edit.name} placeholder="Project name" action="Save" onSubmit={(name) => { useEdits.getState().setEdit({ ...edit, name }); setPanel(null); }} />;
+  else if (panel === 'chroma' && selOverlay) body = <ChromaPanel chroma={selOverlay.chroma} onChange={(chroma, commit) => change(patchItem(edit, 'overlays', selOverlay.id, { chroma }), commit)} />;
   else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;
 
   return (

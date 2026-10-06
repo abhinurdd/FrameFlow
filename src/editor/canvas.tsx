@@ -14,6 +14,7 @@ import { CaptionLine, ClipFrame } from '@/ui/clip-visual';
 import { colors, hasDevanagari } from '@/ui/theme';
 
 import { fontFamily } from './fonts';
+import { KeyedImage, KeyedVideo } from './keyed';
 import type { CanvasSize, Selection } from './types';
 
 const SELECT = colors.select;
@@ -193,12 +194,20 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
       }}>
       {overlay.kind === 'sticker' ? (
         <Text style={{ fontSize: bw * 0.8, lineHeight: bw, transform: [{ scaleX: overlay.flipH ? -1 : 1 }] }}>{overlay.emoji}</Text>
+      ) : overlay.chroma && asset ? (
+        <View style={{ transform: [{ scaleX: overlay.flipH ? -1 : 1 }] }}>
+          {asset.kind === 'video' ? (
+            <KeyedVideo uri={asset.uri} chroma={overlay.chroma} width={bw} height={bh} target={overlay.in + Math.max(0, local)} playing={playing && visible} volume={overlay.muted || !visible ? 0 : overlay.volume} />
+          ) : (
+            <KeyedImage uri={asset.uri} chroma={overlay.chroma} width={bw} height={bh} />
+          )}
+        </View>
       ) : asset?.kind === 'video' ? (
         <OverlayVideo overlay={overlay} asset={asset} time={time} playing={playing} style={media} />
       ) : (
         asset && <Image source={{ uri: asset.uri }} style={media as ImageStyle} contentFit="cover" />
       )}
-      {overlay.kind !== 'sticker' && <LookLayers look={overlay.look} width={bw} height={bh} />}
+      {overlay.kind !== 'sticker' && !overlay.chroma && <LookLayers look={overlay.look} width={bw} height={bh} />}
     </Pressable>
   );
 }

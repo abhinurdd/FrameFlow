@@ -14,7 +14,9 @@
  */
 
 import { IDENTITY, NO_ANIMATION, transformAt, type Animation, type EffectId, type Keyframe, type Transform, type Transition } from './animate';
+import type { Chroma } from './chroma';
 import { NO_LOOK, type Look } from './looks';
+import { offsetAt, playDuration, sliceCurve, sourceAt } from './speed';
 import type { TemplateId } from './types';
 
 export type EditAspect = 'original' | '9:16' | '16:9' | '1:1' | '4:5' | '3:4' | '4:3' | '21:9';
@@ -44,6 +46,8 @@ export type Segment = {
   in: number;
   out: number;
   speed: number;
+  /** Speed curve on top of `speed`: multipliers at even points along the clip. See speed.ts. */
+  curve?: number[] | null;
   volume: number;
   muted: boolean;
   /** Audio fades, in timeline seconds. */
@@ -84,6 +88,8 @@ export type Overlay = {
   look: Look;
   blend: BlendMode;
   mask: Mask;
+  /** Green-screen removal, or none. */
+  chroma?: Chroma | null;
   animation: Animation;
 };
 
@@ -219,7 +225,12 @@ export function blankEdit(id: string, name: string, now: number): Edit {
 // ---- Time ----
 
 export function segmentDuration(s: Segment) {
-  return (s.out - s.in) / s.speed;
+  return playDuration(s);
+}
+
+/** Source seconds per playback second, averaged over the clip. */
+export function averageSpeed(s: Segment) {
+  return (s.out - s.in) / Math.max(playDuration(s), 1e-6);
 }
 
 /** Length of the transition out of segment `i`, capped so transitions never touch. */
@@ -265,7 +276,7 @@ export type Location = { index: number; segment: Segment; start: number; /** Sec
 function locationOf(edit: Edit, starts: number[], index: number, t: number): Location {
   const segment = edit.main[index];
   const offset = Math.min(Math.max(t - starts[index], 0), segmentDuration(segment));
-  return { index, segment, start: starts[index], offset, sourceTime: segment.in + offset * segment.speed };
+  return { index, segment, start: starts[index], offset, sourceTime: sourceAt(segment, offset) };
 }
 
 /** The segment under timeline time `t`: the latest one to have started. Clamps to the ends. */
@@ -360,8 +371,9 @@ export function splitAt(edit: Edit, t: number, newId: string): Edit {
   if (sourceTime - segment.in < min || segment.out - sourceTime < min) return edit;
   const [before, after] = splitKeyframes(segment, offset);
   // The in animation stays with the first half and the out animation with the second.
-  const left: Segment = { ...segment, out: sourceTime, transition: null, fadeOut: 0, keyframes: before, animation: { ...segment.animation, out: 'none' } };
-  const right: Segment = { ...segment, id: newId, in: sourceTime, fadeIn: 0, keyframes: after, animation: { ...segment.animation, in: 'none' } };
+  const u = (sourceTime - segment.in) / (segment.out - segment.in);
+  const left: Segment = { ...segment, out: sourceTime, curve: sliceCurve(segment.curve, 0, u), transition: null, fadeOut: 0, keyframes: before, animation: { ...segment.animation, out: 'none' } };
+  const right: Segment = { ...segment, id: newId, in: sourceTime, curve: sliceCurve(segment.curve, u, 1), fadeIn: 0, keyframes: after, animation: { ...segment.animation, in: 'none' } };
   const main = [...edit.main];
   main.splice(index, 1, left, right);
   return { ...edit, main };
@@ -386,41 +398,6 @@ export function trimSegment(edit: Edit, id: string, to: { in?: number; out?: num
   const nextIn = asset.kind === 'image' ? 0 : Math.min(Math.max(to.in ?? s.in, 0), inMax);
   const nextOut = Math.min(Math.max(to.out ?? s.out, nextIn + min), sourceEnd);
   return patchSegment(edit, id, { in: nextIn, out: nextOut });
-}
-
-export const SPEED_RAMPS: { id: string; name: string; speeds: number[] }[] = [
-  { id: 'montage', name: 'Montage', speeds: [1, 3, 0.5, 3, 1] },
-  { id: 'hero', name: 'Hero', speeds: [1.5, 0.4, 1.5] },
-  { id: 'bullet', name: 'Bullet', speeds: [3, 0.3, 3] },
-  { id: 'flash-in', name: 'Flash in', speeds: [3, 1.5, 1] },
-  { id: 'flash-out', name: 'Flash out', speeds: [1, 1.5, 3] },
-  { id: 'jump', name: 'Jump cut', speeds: [1, 4, 1, 4, 1] },
-];
-
-/**
- * Speed ramp: cut a segment into equal parts of its source, each at its own speed.
- * Ramps are stepped rather than smooth, which keeps preview and export identical.
- */
-export function rampSegment(edit: Edit, id: string, speeds: number[], makeId: () => string): Edit {
-  const i = edit.main.findIndex((s) => s.id === id);
-  const s = edit.main[i];
-  if (!s || (s.out - s.in) / speeds.length < MIN_SEGMENT * Math.max(...speeds)) return edit;
-  const part = (s.out - s.in) / speeds.length;
-  const pieces = speeds.map((speed, k): Segment => ({
-    ...s,
-    id: k === 0 ? s.id : makeId(),
-    in: s.in + k * part,
-    out: s.in + (k + 1) * part,
-    speed,
-    keyframes: [],
-    animation: { ...s.animation, in: k === 0 ? s.animation.in : 'none', out: k === speeds.length - 1 ? s.animation.out : 'none' },
-    fadeIn: k === 0 ? s.fadeIn : 0,
-    fadeOut: k === speeds.length - 1 ? s.fadeOut : 0,
-    transition: k === speeds.length - 1 ? s.transition : null,
-  }));
-  const main = [...edit.main];
-  main.splice(i, 1, ...pieces);
-  return { ...edit, main };
 }
 
 export function removeSegment(edit: Edit, id: string): Edit {
@@ -624,18 +601,19 @@ function cutMain(edit: Edit, ranges: Range[], makeId: () => string): { edit: Edi
       if (b - a <= 1e-6) continue;
       if (a - st < MIN_SEGMENT) a = st;
       if (!tail && segEnd - b < MIN_SEGMENT) b = segEnd;
-      const source = (t: number) => s.in + (t - st) * s.speed;
+      const source = (t: number) => sourceAt(s, t - st);
+      const part = (from: number, to: number) => sliceCurve(s.curve, (from - s.in) / (s.out - s.in), (to - s.in) / (s.out - s.in));
       const later = (offset: number) => s.keyframes.filter((k) => k.t >= offset).map((k) => ({ ...k, t: k.t - offset }));
       if (a <= st && b >= ownEnd - 1e-6) {
         main.splice(i, 1);
         b = ownEnd;
       } else if (a <= st) {
-        main[i] = { ...s, in: source(b), fadeIn: 0, keyframes: later(b - st), animation: { ...s.animation, in: 'none' } };
+        main[i] = { ...s, in: source(b), curve: part(source(b), s.out), fadeIn: 0, keyframes: later(b - st), animation: { ...s.animation, in: 'none' } };
       } else if (!tail && b >= segEnd - 1e-6) {
-        main[i] = { ...s, out: source(a), fadeOut: 0, transition: null, keyframes: s.keyframes.filter((k) => k.t <= a - st), animation: { ...s.animation, out: 'none' } };
+        main[i] = { ...s, out: source(a), curve: part(s.in, source(a)), fadeOut: 0, transition: null, keyframes: s.keyframes.filter((k) => k.t <= a - st), animation: { ...s.animation, out: 'none' } };
       } else {
-        const left: Segment = { ...s, out: source(a), fadeOut: 0, transition: null, keyframes: s.keyframes.filter((k) => k.t <= a - st), animation: { ...s.animation, out: 'none' } };
-        const right: Segment = { ...s, id: makeId(), in: source(b), fadeIn: 0, keyframes: later(b - st), animation: { ...s.animation, in: 'none' } };
+        const left: Segment = { ...s, out: source(a), curve: part(s.in, source(a)), fadeOut: 0, transition: null, keyframes: s.keyframes.filter((k) => k.t <= a - st), animation: { ...s.animation, out: 'none' } };
+        const right: Segment = { ...s, id: makeId(), in: source(b), curve: part(source(b), s.out), fadeIn: 0, keyframes: later(b - st), animation: { ...s.animation, in: 'none' } };
         main.splice(i, 1, left, right);
       }
       from = Math.min(from, a);
@@ -724,11 +702,11 @@ export function relink(before: Edit, after: Edit): Edit {
       const near = same >= 0 ? same : loc.index;
       if (pieces.length) i = pieces.reduce((best, k) => (Math.abs(k - near) < Math.abs(best - near) ? k : best));
     }
-    if (i >= 0) return { time: starts[i] + (src - after.main[i].in) / after.main[i].speed, scale: old.speed / after.main[i].speed };
+    if (i >= 0) return { time: starts[i] + offsetAt(after.main[i], src), scale: averageSpeed(old) / averageSpeed(after.main[i]) };
     if (same < 0) return null;
     // The moment was trimmed away: pin to the nearer edge of the clip.
     const s = after.main[same];
-    return { time: src < s.in ? starts[same] : starts[same] + segmentDuration(s), scale: old.speed / s.speed };
+    return { time: src < s.in ? starts[same] : starts[same] + segmentDuration(s), scale: averageSpeed(old) / averageSpeed(s) };
   };
   const move = <T extends { start: number }>(item: T): T => {
     const a = anchor(item.start);

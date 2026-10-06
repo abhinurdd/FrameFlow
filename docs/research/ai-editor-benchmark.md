@@ -39,7 +39,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Feature | Benchmark | FrameFlow |
 |---|---|---|
 | Constant speed | 0.1x–100x | ✅ 0.1x–8x |
-| Speed curves | CapCut presets and custom points | 🟡 six stepped ramps (Montage, Hero, Bullet, Flash in/out, Jump cut); no custom curve |
+| Speed curves | CapCut presets and custom points | ✅ six presets (Montage, Hero, Bullet, Flash in/out, Jump cut) and a custom five-point curve; smooth in preview and export |
 | Optical-flow slow motion | CapCut | ❌ |
 | Keyframes | position, scale, rotation, opacity | 🟡 on clips, overlays and text, eased |
 | In / Out animations | CapCut | ✅ 9 each for clips, overlays, text |
@@ -58,7 +58,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Masks | linear, mirror, circle, rectangle, star… | 🟡 circle and rounded only |
 | Canvas ratio and background | CapCut, InShot | ✅ 8 ratios, colour background; blur background shows in export only |
 | Rotate, flip, fill / fit, zoom, opacity | all | ✅ |
-| Chroma key | CapCut, InShot, Edits | ❌ needs a shader-based preview |
+| Chroma key | CapCut, InShot, Edits | ✅ on video and photo overlays: key colour, strength, soft edge, tint clean-up; ❌ not on main-track clips, no colour picker from the picture |
 | Stabilise | CapCut, InShot | 🟡 server tool, light one-pass stabilisation |
 | Background removal, object tracking | CapCut, Edits | ❌ |
 
@@ -122,7 +122,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 1. **Deploy the media server.** Until it runs somewhere reachable, export and every AI tool only work next to the development Mac.
 2. **Real AI clipping**, wired into the editor. It is the differentiator VN and CapCut lack for Hindi, and it is still a mock.
 3. **Hinglish caption quality.** Whisper produced Devanagari for English loan words ("स्टार्टार्ट" for "startup"). The ASR bakeoff decides the provider.
-4. **Chroma key, custom speed curves, more masks.** These need a shader-based compositor and a development build.
+4. **More mask shapes, blending video overlays, background blur in preview.** These need more of the picture drawn through shaders.
 
 ## Sources
 

@@ -1,5 +1,7 @@
 import { resolveTransform, setKeyframe, transformAt, transitionAt, IDENTITY, NO_ANIMATION } from './animate';
+import { chromaPixel, DEFAULT_CHROMA } from './chroma';
 import { compileLook, gradePixel, NO_ADJUST, NO_LOOK } from './looks';
+import { offsetAt, playDuration, ptsExpression, sourceAt, speedAt } from './speed';
 import {
   appendAssets,
   blankEdit,
@@ -16,7 +18,6 @@ import {
   newText,
   addItem,
   parseSrt,
-  rampSegment,
   rippleCut,
   relink,
   patchSegment,
@@ -141,13 +142,6 @@ test('looks grade pixels', () => {
   expect(gradePixel([0.8, 0.8, 0.8], contrast)[0]).toBeGreaterThan(0.8);
 });
 
-test('speed ramp splits the source evenly', () => {
-  let n = 0;
-  const ramped = rampSegment(edit, 's1', [2, 0.5], () => `r${n++}`);
-  expect(ramped.main.map((s) => [s.id, s.in, s.out, s.speed])).toEqual([['s1', 0, 5, 2], ['r0', 5, 10, 0.5], ['s2', 0, 4, 1]]);
-  expect(totalDuration(ramped)).toBe(2.5 + 10 + 4);
-});
-
 test('relink keeps items over the same moment of the same clip', () => {
   const caption = { id: 'c1', start: 4, duration: 2, text: 'hi there', words: [{ t0: 0, t1: 1, text: 'hi' }, { t0: 1, t1: 2, text: 'there' }] };
   const base = addItem(addItem(addItem(edit, 'texts', newText('t1', 11)), 'captions', caption), 'audio', newAudio('m1', 4, music, 'music'));
@@ -216,8 +210,9 @@ test('deleting a clip takes its items and shifts the rest by the real gap', () =
 test('items on a duplicated clip stay on the duplicate', () => {
   const dup = addItem(duplicateSegment(edit, 's1', 'd'), 'texts', newText('t', 16));
   expect(relink(dup, trimSegment(dup, 'd', { in: 3 })).texts[0].start).toBe(13);
-  let n = 0;
-  expect(relink(dup, rampSegment(dup, 'd', [2, 0.5], () => `r${n++}`)).texts[0].start).toBe(12.5 + 2);
+  // A speed curve on the duplicate keeps the text over the same picture, on the duplicate.
+  const curved = patchSegment(dup, 'd', { curve: [2, 2, 2, 2, 2] });
+  expect(relink(dup, curved).texts[0].start).toBeCloseTo(13);
 });
 
 test('split carries keyframed motion across the cut; copies stay reachable', () => {
@@ -229,4 +224,34 @@ test('split carries keyframed motion across the cut; copies stay reachable', () 
   expect([left.animation.out, right.animation.in]).toEqual(['none', 'none']);
   const late = addItem(edit, 'texts', { ...newText('t', 12), duration: 2 });
   expect(duplicateItem(late, 'texts', 't', 'u').texts[1].start).toBeLessThan(14);
+});
+
+test('speed curves: duration, mapping both ways, and splitting', () => {
+  const flat = { in: 0, out: 10, speed: 2, curve: null };
+  expect(playDuration(flat)).toBe(5);
+  const twice = { in: 0, out: 10, speed: 1, curve: [2, 2, 2] };
+  expect(playDuration(twice)).toBeCloseTo(5);
+  const ramp = { in: 2, out: 12, speed: 1, curve: [1, 4, 1] };
+  // Slowest at the ends, so it takes longer than a constant 4x and less than 1x.
+  expect(playDuration(ramp)).toBeGreaterThan(2.5);
+  expect(playDuration(ramp)).toBeLessThan(10);
+  for (const src of [2, 3.3, 7, 9.9, 12]) expect(sourceAt(ramp, offsetAt(ramp, src))).toBeCloseTo(src, 5);
+  expect(speedAt(ramp, 7)).toBeCloseTo(4);
+  // The engine uses it: the edit gets shorter and a split keeps the total.
+  const curved = patchSegment(edit, 's1', { curve: [1, 4, 1] });
+  expect(totalDuration(curved)).toBeCloseTo(playDuration({ in: 0, out: 10, speed: 1, curve: [1, 4, 1] }) + 4);
+  const cut = splitAt(curved, 1.5, 'x');
+  expect(totalDuration(cut)).toBeCloseTo(totalDuration(curved), 1);
+  // The ffmpeg expression agrees with the engine. `T` is seconds after the seek point.
+  const expr = ptsExpression(ramp, 3);
+  const pts = (T: number) => Function('T', 'lt', 'log', 'max', `const _if=(c,a,b)=>c?a:b; return ${expr.replace(/if\(/g, '_if(')}`)(T, (a: number, b: number) => a < b, Math.log, Math.max);
+  for (const src of [3, 5, 8.2, 11.9]) expect(pts(src - 3)).toBeCloseTo(offsetAt(ramp, src) - offsetAt(ramp, 3), 4);
+});
+
+test('chroma key removes the key colour and keeps the rest', () => {
+  expect(chromaPixel(0, 0.82, 0, DEFAULT_CHROMA)[3]).toBe(0);
+  expect(chromaPixel(0.1, 0.6, 0.12, DEFAULT_CHROMA)[3]).toBeLessThan(0.2);
+  expect(chromaPixel(0.8, 0.6, 0.5, DEFAULT_CHROMA)[3]).toBe(1);
+  expect(chromaPixel(1, 1, 1, DEFAULT_CHROMA)[3]).toBe(1);
+  expect(chromaPixel(0.05, 0.05, 0.05, DEFAULT_CHROMA)[3]).toBe(1);
 });

@@ -3,8 +3,10 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { ANIMATIONS, EFFECTS, IDENTITY, TRANSITIONS, type Animation, type EffectId, type Transform, type Transition } from '@/engine/animate';
+import { DEFAULT_CHROMA, KEY_COLORS, type Chroma } from '@/engine/chroma';
 import { ADJUST_SLIDERS, FILTERS, NO_ADJUST, type Look } from '@/engine/looks';
-import { ASPECTS, BLEND_MODES, FONTS, SPEED_RAMPS, SPEEDS, type Caption, type Background, type BlendMode, type CaptionStyle, type EditAspect, type Fit, type Mask, type TextStyle } from '@/engine/timeline';
+import { ASPECTS, BLEND_MODES, FONTS, SPEEDS, type Caption, type Background, type BlendMode, type CaptionStyle, type EditAspect, type Fit, type Mask, type TextStyle } from '@/engine/timeline';
+import { CURVE_MAX, CURVE_MIN, CURVE_POINTS, curveAt, SPEED_CURVES } from '@/engine/speed';
 import { Chip, Row, Segmented, T } from '@/ui/primitives';
 import { TEMPLATES } from '@/ui/templates';
 import { colors, fonts } from '@/ui/theme';
@@ -87,20 +89,118 @@ export function AdjustPanel({ look, onChange }: { look: Look; onChange: Change<L
   );
 }
 
-export function SpeedPanel({ speed, onChange, onRamp }: { speed: number; onChange: (s: number) => void; onRamp: (speeds: number[]) => void }) {
+const sameCurve = (a: number[] | null | undefined, b: number[]) => !!a && a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.01);
+const POINT_NAMES = ['Start', 'Early', 'Middle', 'Late', 'End'];
+
+/** A small picture of the curve: bar height is the speed at that point of the clip. */
+function CurveGraph({ curve }: { curve: number[] }) {
+  const bars = 28;
+  return (
+    <View style={{ height: 40, flexDirection: 'row', alignItems: 'flex-end', gap: 2, paddingHorizontal: 14 }}>
+      {Array.from({ length: bars }, (_, i) => {
+        const v = curveAt(curve, i / (bars - 1));
+        return <View key={i} style={{ flex: 1, height: 4 + 36 * Math.min(1, Math.log2(v / CURVE_MIN) / Math.log2(CURVE_MAX / CURVE_MIN)), borderRadius: 2, backgroundColor: v >= 1 ? colors.saffron : colors.trackOverlay }} />;
+      })}
+    </View>
+  );
+}
+
+export function SpeedPanel({ speed, curve, onSpeed, onCurve }: { speed: number; curve: number[] | null | undefined; onSpeed: (s: number) => void; onCurve: Change<number[] | null> }) {
+  const [mode, setMode] = useState<'normal' | 'curve'>(curve ? 'curve' : 'normal');
+  const isPreset = !!curve && SPEED_CURVES.some((c) => sameCurve(curve, c.curve));
+  // The point sliders only show while shaping a custom curve, to keep the sheet off the picture.
+  const [shaping, setShaping] = useState(!!curve && !isPreset);
+  // Presets have five points; a clip that was cut carries more, shown as its nearest five.
+  const five = curve ? Array.from({ length: CURVE_POINTS }, (_, i) => curveAt(curve, i / (CURVE_POINTS - 1))) : Array.from({ length: CURVE_POINTS }, () => 1);
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ paddingHorizontal: 14 }}>
+        <Segmented options={[{ value: 'normal', label: 'Normal' }, { value: 'curve', label: 'Curve' }]} value={mode} onChange={setMode} />
+      </View>
+      {mode === 'normal' ? (
+        <Strip>
+          {SPEEDS.map((s) => (
+            <Chip key={s} label={`${s}x`} selected={speed === s} onPress={() => onSpeed(s)} />
+          ))}
+        </Strip>
+      ) : (
+        <>
+          <Strip>
+            <Chip
+              label="None"
+              selected={!curve}
+              onPress={() => {
+                setShaping(false);
+                onCurve(null, true);
+              }}
+            />
+            {SPEED_CURVES.map((c) => (
+              <Chip
+                key={c.id}
+                label={c.name}
+                selected={sameCurve(curve, c.curve)}
+                onPress={() => {
+                  setShaping(false);
+                  onCurve(c.curve, true);
+                }}
+              />
+            ))}
+            <Chip
+              label="Custom"
+              selected={shaping}
+              onPress={() => {
+                setShaping(true);
+                onCurve(five, true);
+              }}
+            />
+          </Strip>
+          {curve && (
+            <>
+              <CurveGraph curve={curve} />
+              {shaping && (
+              <ScrollView style={{ maxHeight: 84 }} showsVerticalScrollIndicator={false}>
+                <Stack>
+                  {five.map((v, i) => {
+                    const set = (next: number, commit: boolean) => onCurve(five.map((x, k) => (k === i ? next : x)), commit);
+                    return <Slider key={i} label={POINT_NAMES[i]} value={v} min={CURVE_MIN} max={CURVE_MAX} format={(x) => `${x.toFixed(1)}x`} onChange={(x) => set(x, false)} onCommit={(x) => set(x, true)} />;
+                  })}
+                </Stack>
+              </ScrollView>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+export function ChromaPanel({ chroma, onChange }: { chroma: Chroma | null | undefined; onChange: Change<Chroma | null> }) {
+  const c = chroma ?? DEFAULT_CHROMA;
   return (
     <View style={{ gap: 8 }}>
       <Strip>
-        {SPEEDS.map((s) => (
-          <Chip key={s} label={`${s}x`} selected={speed === s} onPress={() => onChange(s)} />
+        <Chip label="Off" selected={!chroma} onPress={() => onChange(null, true)} />
+        <T variant="muted">Remove</T>
+        {KEY_COLORS.map((color) => (
+          <Pressable
+            key={color}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove colour ${color}`}
+            accessibilityState={{ selected: !!chroma && chroma.color === color }}
+            hitSlop={6}
+            onPress={() => onChange({ ...c, color }, true)}
+            style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: color, borderWidth: 2, borderColor: chroma?.color === color ? colors.highlight : colors.lineStrong }}
+          />
         ))}
       </Strip>
-      <Strip>
-        <T variant="muted">Ramps</T>
-        {SPEED_RAMPS.map((r) => (
-          <Chip key={r.id} label={r.name} onPress={() => onRamp(r.speeds)} />
-        ))}
-      </Strip>
+      {chroma && (
+        <Stack>
+          <Slider label="Strength" value={c.similarity} min={0.05} max={1} onChange={(v) => onChange({ ...c, similarity: v }, false)} onCommit={(v) => onChange({ ...c, similarity: v }, true)} />
+          <Slider label="Soft edge" value={c.smoothness} min={0} max={1} onChange={(v) => onChange({ ...c, smoothness: v }, false)} onCommit={(v) => onChange({ ...c, smoothness: v }, true)} />
+          <Slider label="Clean tint" value={c.spill} min={0} max={1} onChange={(v) => onChange({ ...c, spill: v }, false)} onCommit={(v) => onChange({ ...c, spill: v }, true)} />
+        </Stack>
+      )}
     </View>
   );
 }

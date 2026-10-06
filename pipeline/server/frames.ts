@@ -41,6 +41,8 @@ export type VideoSource = {
   /** Source time of the first frame wanted. */
   from: number;
   speed: number;
+  /** Output seconds as an ffmpeg expression in `T`, for a clip whose speed varies. Overrides `speed`. */
+  pts?: string;
   fps: number;
   orientation: Orientation;
   /** Size of the frames to produce (after orientation). */
@@ -62,9 +64,9 @@ export class FrameReader {
   hasFrame = false;
 
   constructor(private source: VideoSource) {
-    const { file, from, speed, fps, orientation, width, height } = source;
+    const { file, from, speed, pts, fps, orientation, width, height } = source;
     const filters = [
-      `setpts=PTS/${speed}`,
+      pts ? `setpts='(${pts})/TB'` : `setpts=PTS/${speed}`,
       // Constant output rate; `start_time=0` holds the first picture from the seek point.
       `fps=fps=${fps}:start_time=0`,
       ...orientFilters(orientation),

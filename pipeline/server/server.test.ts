@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 import { createCanvas } from '@napi-rs/canvas';
 
 import { IDENTITY, NO_ANIMATION, setKeyframe } from '../../src/engine/animate.ts';
+import { DEFAULT_CHROMA } from '../../src/engine/chroma.ts';
+import { offsetAt, playDuration } from '../../src/engine/speed.ts';
 import { compileLook, FILTERS, gradePixel, NO_ADJUST, NO_LOOK, type Look } from '../../src/engine/looks.ts';
 import {
   addAssets,
@@ -180,13 +182,15 @@ before(async () => {
     make(['-f', 'lavfi', '-i', 'sine=f=220:d=8', '-ac', '2', join(FIXTURES, 'music.wav')]),
     make(['-f', 'lavfi', '-i', 'sine=f=300:d=1', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono:d=1', '-f', 'lavfi', '-i', 'sine=f=300:d=1', '-filter_complex', '[0][1][2]concat=n=3:v=0:a=1', join(FIXTURES, 'gaps.wav')]),
     writeFile(join(FIXTURES, 'clicks.wav'), clickTrack(8, 0.5)),
+    // A green screen: a red square in the middle of pure key green.
+    make(['-f', 'lavfi', '-i', 'color=c=0x00D000:s=640x360:r=30:d=3', '-vf', 'drawbox=x=220:y=80:w=200:h=200:color=red:t=fill', ...x264, '-an', join(FIXTURES, 'green.mp4')]),
   ]);
   // The same landscape pixels, flagged as shot with the phone turned.
   await make(['-display_rotation', '90', '-i', join(FIXTURES, 'flat.mp4'), '-c', 'copy', join(FIXTURES, 'turned.mp4')]);
 
   await new Promise<void>((resolve) => app.listen(0, resolve));
   base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
-  for (const file of ['land.mp4', 'port.mp4', 'turned.mp4', 'still.png', 'music.wav', 'gaps.wav', 'clicks.wav']) {
+  for (const file of ['land.mp4', 'port.mp4', 'turned.mp4', 'green.mp4', 'still.png', 'music.wav', 'gaps.wav', 'clicks.wav']) {
     const info = await upload(file);
     const id = file.split('.')[0];
     assets[id] = { id, uri: `file:///${file}`, kind: info.kind, duration: info.duration, width: info.width, height: info.height, name: file, remoteId: info.id };
@@ -713,4 +717,42 @@ test('transcribe with translate returns English words and the spoken language', 
   console.log(`  english: ${text}`);
   assert.ok(!/[\u0900-\u097F]/.test(text), 'translated words are not in Devanagari');
   assert.match(text, /[A-Za-z]{3}/);
+});
+
+test('a speed curve changes the length and lands frames where the engine says', async () => {
+  const curve = [1, 4, 1];
+  const base = patchSegment(appendAssets(fresh('16:9'), [assets.land], ['s1']), 's1', { in: 0, out: 6 });
+  const curved = patchSegment(base, 's1', { curve });
+  const seg = curved.main[0];
+  const r = await render('curve', curved);
+  expectOutput(r, 1280, 720, playDuration(seg));
+  // The picture at source time 3.0 (the fastest point) appears at the engine's offset for it.
+  const plain = await render('curve-plain', base);
+  const want = await frameAt(plain, 3.0, 'curve-src3-plain');
+  const got = await frameAt(r, offsetAt(seg, 3.0), 'curve-src3');
+  let diff = 0;
+  let count = 0;
+  for (let y = 0.05; y < 1; y += 0.1) for (let x = 0.05; x < 1; x += 0.1) { diff += Math.abs(want.at(x, y)[0] - got.at(x, y)[0]) + Math.abs(want.at(x, y)[1] - got.at(x, y)[1]); count += 2; }
+  assert.ok(diff / count < 14, `frames at the same source time should match (mean difference ${diff / count})`);
+  // Sound runs the whole length.
+  assert.ok((await loudness(r.file, 0.1, 0.5)) > 0.05 && (await loudness(r.file, r.duration - 0.5, r.duration - 0.1)) > 0.05);
+});
+
+test('chroma key: the green goes, the subject stays', async () => {
+  const main = appendAssets(fresh('16:9'), [assets.land], ['s1']);
+  const overlay = { ...newOverlay('o1', 0, { asset: assets.green }), duration: 2, transform: { ...IDENTITY, scale: 2 } };
+  const plain = await render('chroma-off', addItem(addAssets(main, [assets.green]), 'overlays', overlay));
+  const keyed = await render('chroma-on', addItem(addAssets(main, [assets.green]), 'overlays', { ...overlay, chroma: DEFAULT_CHROMA }));
+  const off = await frameAt(plain, 1, 'chroma-off');
+  const on = await frameAt(keyed, 1, 'chroma-on');
+  const under = await frameAt(await render('chroma-under', main), 1, 'chroma-under');
+  // Top-left corner: green without the key, the video underneath with it.
+  const [r0, g0, b0] = off.at(0.05, 0.08);
+  assert.ok(g0 > 150 && r0 < 80 && b0 < 80, `expected green, got ${[r0, g0, b0]}`);
+  const a = on.at(0.05, 0.08);
+  const b = under.at(0.05, 0.08);
+  assert.ok(Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]) < 40, `expected the video underneath ${b}, got ${a}`);
+  // Centre: the red square survives.
+  const [r1, g1] = on.at(0.5, 0.5);
+  assert.ok(r1 > 180 && g1 < 80, `expected red, got ${[r1, g1]}`);
 });

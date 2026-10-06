@@ -7,6 +7,10 @@ import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { createCanvas, type Canvas } from '@napi-rs/canvas';
+
+import { chromaPixel, type Chroma } from '../../src/engine/chroma.ts';
+import { ptsExpression } from '../../src/engine/speed.ts';
 import { activeAt, aspectRatio, mainFrameAt, totalDuration, type Edit, type Location, type Overlay, type Segment } from '../../src/engine/timeline.ts';
 
 import { audioClips, mixAudio } from './audio.ts';
@@ -68,10 +72,29 @@ function peakScale(item: { transform: { scale: number }; keyframes: { scale: num
   return Math.min(2, Math.max(1, ...scales));
 }
 
+/** Green-screen removal: the engine's `chromaPixel` on every pixel of a picture. */
+function keyOut(image: Canvas, chroma: Chroma, into?: Canvas): Canvas {
+  const { width, height } = image;
+  const data = image.getContext('2d').getImageData(0, 0, width, height);
+  const px = data.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const [r, g, b, a] = chromaPixel(px[i] / 255, px[i + 1] / 255, px[i + 2] / 255, chroma);
+    px[i] = r * 255;
+    px[i + 1] = g * 255;
+    px[i + 2] = b * 255;
+    px[i + 3] = px[i + 3] * a;
+  }
+  const out = into ?? createCanvas(width, height);
+  out.getContext('2d').putImageData(data, 0, 0);
+  return out;
+}
+
 /** Opens and advances the decoders the edit needs, frame by frame. */
 class Sources {
   private readers = new Map<string, { reader: FrameReader; first: number; picture: Picture }>();
   private stills = new Map<string, Promise<Picture>>();
+  private keyed = new Map<string, Picture>();
+  private keyCanvas = new Map<string, Canvas>();
 
   constructor(private edit: Edit, private media: Map<string, Media>, private W: number, private H: number, private fps: number) {}
 
@@ -87,12 +110,12 @@ class Sources {
     return hit;
   }
 
-  private async video(key: string, frame: number, media: Media, from: number, speed: number, o: Orientation, drawnWidth: number): Promise<Picture | null> {
+  private async video(key: string, frame: number, media: Media, from: number, speed: number, o: Orientation, drawnWidth: number, pts?: string): Promise<Picture | null> {
     let entry = this.readers.get(key);
     if (!entry) {
       const natural = orientedSize(media.width, media.height, o.rotation);
       const size = decodeSize(natural.width, natural.height, drawnWidth);
-      const reader = new FrameReader({ file: mediaPath(media), from, speed, fps: this.fps, orientation: o, ...size });
+      const reader = new FrameReader({ file: mediaPath(media), from, speed, pts, fps: this.fps, orientation: o, ...size });
       entry = { reader, first: frame, picture: { image: reader.canvas, ...natural } };
       this.readers.set(key, entry);
     }
@@ -115,7 +138,7 @@ class Sources {
     const width = this.segmentWidth(s, media);
     if (media.kind === 'image') return this.still(media, o, width);
     // The engine says which source time this frame shows; the decoder runs on from there.
-    return this.video(`main:${at.index}`, frame, media, at.sourceTime, s.speed, o, width);
+    return this.video(`main:${at.index}`, frame, media, at.sourceTime, s.speed, o, width, s.curve ? ptsExpression(s, at.sourceTime) : undefined);
   }
 
   private async overlay(o: Overlay, t: number, frame: number): Promise<Picture | null> {
@@ -124,8 +147,16 @@ class Sources {
     // Base width is half the canvas; a circle mask covers a square, so size by the short side.
     const cover = o.mask === 'circle' ? Math.max(1, media.width / media.height) : 1;
     const width = 0.5 * this.W * peakScale(o) * cover;
-    if (o.kind === 'video' && media.kind === 'video') return this.video(`overlay:${o.id}`, frame, media, o.in + (t - o.start), 1, UPRIGHT, width);
-    return this.still(media, UPRIGHT, width);
+    const moving = o.kind === 'video' && media.kind === 'video';
+    const picture = moving ? await this.video(`overlay:${o.id}`, frame, media, o.in + (t - o.start), 1, UPRIGHT, width) : await this.still(media, UPRIGHT, width);
+    if (!picture || !o.chroma) return picture;
+    // A keyed still is the same every frame; a keyed video is redone for each.
+    const cached = moving ? undefined : this.keyed.get(o.id);
+    if (cached) return cached;
+    const keyed = { ...picture, image: keyOut(picture.image, o.chroma, moving ? this.keyCanvas.get(o.id) : undefined), alpha: true };
+    if (moving) this.keyCanvas.set(o.id, keyed.image);
+    else this.keyed.set(o.id, keyed);
+    return keyed;
   }
 
   async at(t: number, frame: number): Promise<FramePictures> {
