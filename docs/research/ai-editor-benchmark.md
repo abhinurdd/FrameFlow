@@ -58,7 +58,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Masks | linear, mirror, circle, rectangle, star… | 🟡 circle and rounded only |
 | Canvas ratio and background | CapCut, InShot | ✅ 8 ratios, colour background; blur background shows in export only |
 | Rotate, flip, fill / fit, zoom, opacity | all | ✅ |
-| Chroma key | CapCut, InShot, Edits | ✅ on video and photo overlays: key colour, strength, soft edge, tint clean-up; ❌ not on main-track clips, no colour picker from the picture |
+| Chroma key | CapCut, InShot, Edits | ✅ on main-track clips and on video and photo overlays: key colour (presets or an eyedropper that samples the picture), strength, soft edge, tint clean-up |
 | Stabilise | CapCut, InShot | 🟡 server tool, light one-pass stabilisation |
 | Background removal, object tracking | CapCut, Edits | ❌ |
 

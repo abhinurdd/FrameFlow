@@ -14,7 +14,10 @@ import { CaptionLine, ClipFrame } from '@/ui/clip-visual';
 import { colors, hasDevanagari } from '@/ui/theme';
 
 import { fontFamily } from './fonts';
-import { KeyedImage, KeyedVideo } from './keyed';
+import { DEFAULT_CHROMA } from '@/engine/chroma';
+import { sourceAt, speedAt } from '@/engine/speed';
+
+import { KeyedImage, KeyedVideo, type Pick } from './keyed';
 import type { CanvasSize, Selection } from './types';
 
 const SELECT = colors.select;
@@ -83,12 +86,17 @@ function MainLayer({
   canvas,
   nudge,
   selected,
+  playing,
+  pick,
   onPress,
 }: {
   segment: Segment;
   asset: Asset;
   player: VideoPlayer;
   offset: number;
+  playing: boolean;
+  /** Set while the eyedropper is choosing this clip's key colour. */
+  pick?: Pick;
   layer: Layer;
   above: boolean;
   canvas: CanvasSize;
@@ -103,11 +111,16 @@ function MainLayer({
   const fw = aw * k;
   const fh = ah * k;
   const t = nudged(resolveTransform(segment, offset, segmentDuration(segment)), nudge, canvas);
+  const mw = turned ? fh : fw;
+  const mh = turned ? fw : fh;
+  // Picking a colour needs the pixels, so the clip is drawn by Skia then as well.
+  const keyed = segment.chroma ?? (pick ? DEFAULT_CHROMA : null);
+  const source = sourceAt(segment, offset);
   const media: ViewStyle = {
     position: 'absolute',
     // A quarter-turned clip is laid out sideways, then rotated back into the frame.
-    width: turned ? fh : fw,
-    height: turned ? fw : fh,
+    width: mw,
+    height: mh,
     left: turned ? (fw - fh) / 2 : 0,
     top: turned ? (fh - fw) / 2 : 0,
     transform: [{ rotate: `${segment.rotation}deg` }, { scaleX: segment.flipH ? -1 : 1 }, { scaleY: segment.flipV ? -1 : 1 }],
@@ -121,12 +134,21 @@ function MainLayer({
           {asset.placeholder ? (
             // The video is not on this phone yet: show a stand-in so timing and captions can still be edited.
             <ClipFrame tone={0} personSize={fw * 0.9} style={[media, { borderRadius: 0 }]} />
+          ) : keyed ? (
+            // The clip's own player carries on unseen: it still supplies the sound and the clock.
+            <View style={media}>
+              {asset.kind === 'image' ? (
+                <KeyedImage uri={asset.uri} chroma={keyed} width={mw} height={mh} pick={pick} />
+              ) : (
+                <KeyedVideo uri={asset.uri} chroma={keyed} width={mw} height={mh} target={source} rate={speedAt(segment, source)} playing={playing} volume={0} pick={pick} />
+              )}
+            </View>
           ) : asset.kind === 'image' ? (
             <Image source={{ uri: asset.uri }} style={media as ImageStyle} contentFit="fill" />
           ) : (
             <VideoView player={player} surfaceType="textureView" nativeControls={false} contentFit="fill" style={media} />
           )}
-          <LookLayers look={segment.look} width={fw} height={fh} />
+          {!keyed && <LookLayers look={segment.look} width={fw} height={fh} />}
         </Pressable>
       </View>
     </View>
@@ -162,7 +184,7 @@ function OverlayVideo({ overlay, asset, time, playing, style }: { overlay: Overl
   return <VideoView player={player} surfaceType="textureView" nativeControls={false} contentFit="cover" style={style} />;
 }
 
-function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, onPress }: { overlay: Overlay; asset?: Asset; time: number; playing: boolean; canvas: CanvasSize; nudge: Nudge | null; selected: boolean; onPress: () => void }) {
+function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, pick, onPress }: { overlay: Overlay; asset?: Asset; time: number; playing: boolean; canvas: CanvasSize; nudge: Nudge | null; selected: boolean; pick?: Pick; onPress: () => void }) {
   const local = time - overlay.start;
   const visible = local >= 0 && local < overlay.duration;
   const t = nudged(resolveTransform(overlay, Math.max(0, local), overlay.duration), nudge, canvas);
@@ -171,6 +193,7 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
   const bh = square || !asset?.width ? bw : bw * (asset.height / asset.width);
   const radius = overlay.mask === 'circle' ? bw / 2 : overlay.mask === 'rounded' ? bw * 0.12 : 0;
   const media: ViewStyle = { width: bw, height: bh, transform: [{ scaleX: overlay.flipH ? -1 : 1 }] };
+  const keyed = overlay.kind === 'sticker' ? null : (overlay.chroma ?? (pick ? DEFAULT_CHROMA : null));
   return (
     <Pressable
       onPress={onPress}
@@ -194,12 +217,12 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
       }}>
       {overlay.kind === 'sticker' ? (
         <Text style={{ fontSize: bw * 0.8, lineHeight: bw, transform: [{ scaleX: overlay.flipH ? -1 : 1 }] }}>{overlay.emoji}</Text>
-      ) : overlay.chroma && asset ? (
+      ) : keyed && asset ? (
         <View style={{ transform: [{ scaleX: overlay.flipH ? -1 : 1 }] }}>
           {asset.kind === 'video' ? (
-            <KeyedVideo uri={asset.uri} chroma={overlay.chroma} width={bw} height={bh} target={overlay.in + Math.max(0, local)} playing={playing && visible} volume={overlay.muted || !visible ? 0 : overlay.volume} />
+            <KeyedVideo uri={asset.uri} chroma={keyed} width={bw} height={bh} target={overlay.in + Math.max(0, local)} playing={playing && visible} volume={overlay.muted || !visible ? 0 : overlay.volume} pick={pick} />
           ) : (
-            <KeyedImage uri={asset.uri} chroma={overlay.chroma} width={bw} height={bh} />
+            <KeyedImage uri={asset.uri} chroma={keyed} width={bw} height={bh} pick={pick} />
           )}
         </View>
       ) : asset?.kind === 'video' ? (
@@ -207,7 +230,7 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
       ) : (
         asset && <Image source={{ uri: asset.uri }} style={media as ImageStyle} contentFit="cover" />
       )}
-      {overlay.kind !== 'sticker' && !overlay.chroma && <LookLayers look={overlay.look} width={bw} height={bh} />}
+      {overlay.kind !== 'sticker' && !keyed && <LookLayers look={overlay.look} width={bw} height={bh} />}
     </Pressable>
   );
 }
@@ -274,6 +297,7 @@ export function EditCanvas({
   selection,
   onSelect,
   onTransform,
+  onPick,
 }: {
   edit: Edit;
   time: number;
@@ -285,9 +309,11 @@ export function EditCanvas({
   onSelect: (s: Selection) => void;
   /** Commit a canvas gesture on the selected item. */
   onTransform: (change: (t: Transform) => Transform) => void;
+  /** Set while the eyedropper is on: the selected clip is sampled instead of moved. */
+  onPick?: Pick;
 }) {
   const [nudge, setNudge] = useState<Nudge>(NO_NUDGE);
-  const movable = selection !== null && (selection.track === 'main' || selection.track === 'overlays' || selection.track === 'texts');
+  const movable = !onPick && selection !== null && (selection.track === 'main' || selection.track === 'overlays' || selection.track === 'texts');
   // Pan, pinch and twist can run together. They share one nudge, committed once when the last finger lifts.
   const [tracker] = useState(() => new NudgeTracker());
   const begin = () => tracker.begin();
@@ -349,6 +375,8 @@ export function EditCanvas({
                 canvas={canvas}
                 nudge={liveFor('main', segment.id)}
                 selected={selection?.track === 'main' && selection.id === segment.id}
+                playing={playing}
+                pick={selection?.track === 'main' && selection.id === segment.id ? onPick : undefined}
                 onPress={() => onSelect({ track: 'main', id: segment.id })}
               />
             );
@@ -367,6 +395,7 @@ export function EditCanvas({
                   canvas={canvas}
                   nudge={liveFor('overlays', o.id)}
                   selected={selection?.track === 'overlays' && selection.id === o.id}
+                  pick={selection?.track === 'overlays' && selection.id === o.id ? onPick : undefined}
                   onPress={() => onSelect({ track: 'overlays', id: o.id })}
                 />
               ))}

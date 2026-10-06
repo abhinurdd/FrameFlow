@@ -756,3 +756,15 @@ test('chroma key: the green goes, the subject stays', async () => {
   const [r1, g1] = on.at(0.5, 0.5);
   assert.ok(r1 > 180 && g1 < 80, `expected red, got ${[r1, g1]}`);
 });
+
+test('chroma key on a main clip shows the canvas background', async () => {
+  const base = appendAssets(fresh('16:9'), [assets.green], ['s1']);
+  const edit: Edit = { ...patchSegment(base, 's1', { chroma: DEFAULT_CHROMA, fit: 'cover' }), background: { type: 'color', color: '#0000FF' } };
+  const on = await frameAt(await render('chroma-main', edit), 1, 'chroma-main');
+  // Corner: the green is gone and the blue background shows.
+  const [r0, g0, b0] = on.at(0.05, 0.08);
+  assert.ok(b0 > 180 && g0 < 80 && r0 < 80, `expected blue, got ${[r0, g0, b0]}`);
+  // Centre: the red square survives.
+  const [r1, g1] = on.at(0.5, 0.5);
+  assert.ok(r1 > 180 && g1 < 80, `expected red, got ${[r1, g1]}`);
+});

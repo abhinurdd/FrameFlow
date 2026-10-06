@@ -34,6 +34,7 @@ import { clock, TimelineView } from '@/editor/timeline-view';
 import { BusyPill, IconButton, Tool, ToolSheet, type ToolDef } from '@/editor/ui';
 import type { CanvasSize, Selection } from '@/editor/types';
 import { usePlayback } from '@/editor/use-playback';
+import { DEFAULT_CHROMA, type Chroma } from '@/engine/chroma';
 import { keyframeNear, setKeyframe, transformAt, type Keyframe, type Transform } from '@/engine/animate';
 import type { Look } from '@/engine/looks';
 import {
@@ -177,6 +178,8 @@ export default function Editor() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [selection, setSelection] = useState<Selection>(null);
   const [panel, setPanel] = useState<PanelId>(null);
+  // The eyedropper: the next touch on the preview chooses the green-screen colour.
+  const [picking, setPicking] = useState(false);
   const [area, setArea] = useState<CanvasSize>({ w: 0, h: 0 });
   const [busy, setBusy] = useState<string | null>(null);
   const [recordingFrom, setRecordingFrom] = useState<number | null>(null);
@@ -248,11 +251,15 @@ export default function Editor() {
     history.flush();
     setPanel(p);
   };
-  const togglePanel = (p: PanelId) => openPanel(panel === p ? null : p);
+  const togglePanel = (p: PanelId) => {
+    setPicking(false);
+    openPanel(panel === p ? null : p);
+  };
   const select = (s: Selection) => {
     history.flush();
     setSelection(s);
     setPanel(null);
+    setPicking(false);
   };
 
 
@@ -557,8 +564,9 @@ export default function Editor() {
       split,
       ...(isVideo ? [opens('speed', 'speedometer-outline', 'Speed'), opens('volume', 'volume-high-outline', 'Volume')] : []),
       opens('animation', 'color-wand-outline', 'Animation'),
-      opens('filters', 'color-filter-outline', 'Filters'),
-      opens('adjust', 'options-outline', 'Adjust'),
+      ...(asset && !asset.placeholder ? [opens('chroma', 'color-fill-outline', 'Chroma')] : []),
+      // A keyed picture has holes in it, which filters cannot follow.
+      ...(selSegment.chroma ? [] : [opens('filters', 'color-filter-outline', 'Filters'), opens('adjust', 'options-outline', 'Adjust')]),
       opens('transform', 'resize-outline', 'Transform'),
       keyframeTool,
       ...(isVideo
@@ -611,6 +619,19 @@ export default function Editor() {
     else if (target) change(patchSegment(edit, target.id, { look }), commit);
   };
   const animated = selSegment ?? selOverlay ?? selText;
+  const keyable = selSegment ?? selOverlay;
+  const setChroma = (chroma: Chroma | null, commit: boolean) => {
+    if (selSegment) change(patchSegment(edit, selSegment.id, { chroma }), commit);
+    else if (selOverlay) change(patchItem(edit, 'overlays', selOverlay.id, { chroma }), commit);
+  };
+  const startPicking = (on: boolean) => {
+    if (on && playing) playback.toggle();
+    setPicking(on);
+  };
+  const pickColor = (color: string) => {
+    setPicking(false);
+    setChroma({ ...(keyable?.chroma ?? DEFAULT_CHROMA), color }, true);
+  };
   const inputStyle = { minHeight: 40, maxHeight: 76, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: colors.surface2, color: colors.text, fontFamily: fonts.medium } as const;
 
   let body: React.ReactNode = null;
@@ -776,7 +797,7 @@ export default function Editor() {
   else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={selOverlay.blend} mask={selOverlay.mask} // A playing video cannot be blended in the live preview, so the option is only offered for photos.
         onBlend={selOverlay.kind === 'image' ? (blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend })) : undefined} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
   else if (panel === 'rename') body = <PromptPanel key={edit.id} initial={edit.name} placeholder="Project name" action="Save" onSubmit={(name) => { useEdits.getState().setEdit({ ...edit, name }); setPanel(null); }} />;
-  else if (panel === 'chroma' && selOverlay) body = <ChromaPanel chroma={selOverlay.chroma} onChange={(chroma, commit) => change(patchItem(edit, 'overlays', selOverlay.id, { chroma }), commit)} />;
+  else if (panel === 'chroma' && keyable) body = <ChromaPanel chroma={keyable.chroma} picking={picking} onPicking={startPicking} onChange={setChroma} />;
   else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;
 
   return (
@@ -827,7 +848,7 @@ export default function Editor() {
               <Button title="Add clips" style={{ alignSelf: 'stretch', marginTop: 4 }} loading={busy === 'Importing'} onPress={addClips} />
             </View>
           ) : (
-            canvas.h > 0 && <EditCanvas edit={edit} time={time} playing={playing} players={playback.players} slotSegs={playback.slotSegs} canvas={canvas} selection={selection} onSelect={select} onTransform={(fn) => changeTransform(fn)} />
+            canvas.h > 0 && <EditCanvas edit={edit} time={time} playing={playing} players={playback.players} slotSegs={playback.slotSegs} canvas={canvas} selection={selection} onSelect={select} onTransform={(fn) => changeTransform(fn)} onPick={picking && panel === 'chroma' && keyable ? pickColor : undefined} />
           )}
           {busy && total > 0 && <BusyPill label={busy} />}
           {recordingFrom !== null && (

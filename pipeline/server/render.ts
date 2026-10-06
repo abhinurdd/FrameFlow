@@ -136,9 +136,21 @@ class Sources {
     if (!media || media.kind === 'audio') return null;
     const o: Orientation = { rotation: s.rotation, flipH: s.flipH, flipV: s.flipV };
     const width = this.segmentWidth(s, media);
-    if (media.kind === 'image') return this.still(media, o, width);
+    const moving = media.kind === 'video';
     // The engine says which source time this frame shows; the decoder runs on from there.
-    return this.video(`main:${at.index}`, frame, media, at.sourceTime, s.speed, o, width, s.curve ? ptsExpression(s, at.sourceTime) : undefined);
+    const picture = moving ? await this.video(`main:${at.index}`, frame, media, at.sourceTime, s.speed, o, width, s.curve ? ptsExpression(s, at.sourceTime) : undefined) : await this.still(media, o, width);
+    return this.key(`main:${s.id}`, picture, s.chroma, moving);
+  }
+
+  /** Green-screen a picture. A keyed still is the same every frame; a keyed video is redone for each. */
+  private key(id: string, picture: Picture | null, chroma: Chroma | null | undefined, moving: boolean): Picture | null {
+    if (!picture || !chroma) return picture;
+    const cached = moving ? undefined : this.keyed.get(id);
+    if (cached) return cached;
+    const keyed = { ...picture, image: keyOut(picture.image, chroma, moving ? this.keyCanvas.get(id) : undefined), alpha: true };
+    if (moving) this.keyCanvas.set(id, keyed.image);
+    else this.keyed.set(id, keyed);
+    return keyed;
   }
 
   private async overlay(o: Overlay, t: number, frame: number): Promise<Picture | null> {
@@ -149,14 +161,7 @@ class Sources {
     const width = 0.5 * this.W * peakScale(o) * cover;
     const moving = o.kind === 'video' && media.kind === 'video';
     const picture = moving ? await this.video(`overlay:${o.id}`, frame, media, o.in + (t - o.start), 1, UPRIGHT, width) : await this.still(media, UPRIGHT, width);
-    if (!picture || !o.chroma) return picture;
-    // A keyed still is the same every frame; a keyed video is redone for each.
-    const cached = moving ? undefined : this.keyed.get(o.id);
-    if (cached) return cached;
-    const keyed = { ...picture, image: keyOut(picture.image, o.chroma, moving ? this.keyCanvas.get(o.id) : undefined), alpha: true };
-    if (moving) this.keyCanvas.set(o.id, keyed.image);
-    else this.keyed.set(o.id, keyed);
-    return keyed;
+    return this.key(`overlay:${o.id}`, picture, o.chroma, moving);
   }
 
   async at(t: number, frame: number): Promise<FramePictures> {

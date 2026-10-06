@@ -1,5 +1,5 @@
 import { resolveTransform, setKeyframe, transformAt, transitionAt, IDENTITY, NO_ANIMATION } from './animate';
-import { chromaPixel, DEFAULT_CHROMA } from './chroma';
+import { chromaPixel, DEFAULT_CHROMA, hexToRgb, rgbToHex } from './chroma';
 import { compileLook, gradePixel, NO_ADJUST, NO_LOOK } from './looks';
 import { offsetAt, playDuration, ptsExpression, sourceAt, speedAt } from './speed';
 import {
@@ -254,4 +254,16 @@ test('chroma key removes the key colour and keeps the rest', () => {
   expect(chromaPixel(0.8, 0.6, 0.5, DEFAULT_CHROMA)[3]).toBe(1);
   expect(chromaPixel(1, 1, 1, DEFAULT_CHROMA)[3]).toBe(1);
   expect(chromaPixel(0.05, 0.05, 0.05, DEFAULT_CHROMA)[3]).toBe(1);
+});
+
+test('a picked colour survives the trip to hex and back', () => {
+  expect(rgbToHex(0, 208, 0)).toBe('#00D000');
+  expect(rgbToHex(300, -4, 15.6)).toBe('#FF0010');
+  expect(hexToRgb(rgbToHex(18, 52, 86)).map((v) => Math.round(v * 255))).toEqual([18, 52, 86]);
+});
+
+test('a split green-screen clip is keyed on both halves', () => {
+  const edit = patchSegment(appendAssets(empty, [{ id: 'a', uri: 'a', kind: 'video', duration: 10, width: 1920, height: 1080 }], ['s1']), 's1', { chroma: DEFAULT_CHROMA });
+  const halves = splitAt(edit, 4, 's2').main;
+  expect(halves.map((s) => s.chroma)).toEqual([DEFAULT_CHROMA, DEFAULT_CHROMA]);
 });

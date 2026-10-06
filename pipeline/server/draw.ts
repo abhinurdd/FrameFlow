@@ -247,7 +247,7 @@ export class Painter {
       scale: tr.scale * zoom,
       rotation: tr.rotation,
       opacity: tr.opacity * (layer?.opacity ?? 1),
-      look: seg.look,
+      look: seg.chroma ? NO_LOOK : seg.look,
       blend: 'normal',
       mask: 'none',
       flipH: false,

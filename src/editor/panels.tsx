@@ -175,13 +175,24 @@ export function SpeedPanel({ speed, curve, onSpeed, onCurve }: { speed: number; 
   );
 }
 
-export function ChromaPanel({ chroma, onChange }: { chroma: Chroma | null | undefined; onChange: Change<Chroma | null> }) {
+export function ChromaPanel({ chroma, picking, onPicking, onChange }: { chroma: Chroma | null | undefined; picking: boolean; onPicking: (on: boolean) => void; onChange: Change<Chroma | null> }) {
   const c = chroma ?? DEFAULT_CHROMA;
+  const custom = !!chroma && !KEY_COLORS.includes(chroma.color);
   return (
     <View style={{ gap: 8 }}>
       <Strip>
         <Chip label="Off" selected={!chroma} onPress={() => onChange(null, true)} />
-        <T variant="muted">Remove</T>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Pick the colour to remove from the picture"
+          accessibilityState={{ selected: picking }}
+          hitSlop={6}
+          onPress={() => onPicking(!picking)}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1.5, borderColor: picking ? colors.highlight : colors.lineStrong, backgroundColor: picking ? colors.surface2 : 'transparent' }}>
+          <Ionicons name="eyedrop-outline" size={16} color={picking ? colors.highlight : colors.text} />
+          <T style={{ fontSize: 13 }}>Pick</T>
+          {custom && <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: chroma.color, borderWidth: 1.5, borderColor: colors.highlight }} />}
+        </Pressable>
         {KEY_COLORS.map((color) => (
           <Pressable
             key={color}
@@ -194,7 +205,9 @@ export function ChromaPanel({ chroma, onChange }: { chroma: Chroma | null | unde
           />
         ))}
       </Strip>
-      {chroma && (
+      {picking ? (
+        <T variant="muted" style={{ paddingHorizontal: 14, paddingVertical: 10 }}>Touch the colour to remove in the preview. Slide to fine-tune, then lift.</T>
+      ) : chroma && (
         <Stack>
           <Slider label="Strength" value={c.similarity} min={0.05} max={1} onChange={(v) => onChange({ ...c, similarity: v }, false)} onCommit={(v) => onChange({ ...c, similarity: v }, true)} />
           <Slider label="Soft edge" value={c.smoothness} min={0} max={1} onChange={(v) => onChange({ ...c, smoothness: v }, false)} onCommit={(v) => onChange({ ...c, smoothness: v }, true)} />

@@ -20,6 +20,11 @@ export type Chroma = {
 export const DEFAULT_CHROMA: Chroma = { color: '#00D000', similarity: 0.35, smoothness: 0.1, spill: 0.5 };
 export const KEY_COLORS = ['#00D000', '#0047FF', '#FF2E7E', '#FFFFFF', '#000000'];
 
+/** 0..255 channels → #RRGGBB. */
+export function rgbToHex(r: number, g: number, b: number) {
+  return '#' + [r, g, b].map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
 export function hexToRgb(hex: string): [number, number, number] {
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
 }

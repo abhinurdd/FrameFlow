@@ -60,6 +60,8 @@ export type Segment = {
   fit: Fit;
   transform: Transform;
   keyframes: Keyframe[];
+  /** Green screen: this colour is removed, showing the canvas background behind the clip. */
+  chroma?: Chroma | null;
   look: Look;
   animation: Animation;
   /** Transition into the next segment. The two segments overlap for its duration. */
