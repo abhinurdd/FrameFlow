@@ -1,5 +1,5 @@
-import { AlphaType, Canvas, ColorType, Group, ImageShader, Paint, RadialGradient, Rect, RuntimeShader, Shader, Skia, useCanvasRef, useImage, useVideo, vec, type SkImage } from '@shopify/react-native-skia';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AlphaType, Canvas, ColorType, Group, ImageShader, RadialGradient, Rect, Shader, Skia, useCanvasRef, useImage, useVideo, vec, type SkImage } from '@shopify/react-native-skia';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, View, type GestureResponderEvent } from 'react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 
@@ -14,29 +14,6 @@ function uniforms(chroma: Chroma) {
   return { keyColor: hexToRgb(chroma.color), keyRange: [near, far], keySpill: chroma.spill };
 }
 
-/**
- * A Skia view cannot be blended with the video under it, only laid over it. So the
- * two blends that matter for video are turned into transparency instead: screen lets
- * the backdrop through where the picture is dark, multiply where it is light. Exact
- * for greys; export does the true blend.
- */
-const mixer = Skia.RuntimeEffect.Make(`
-uniform shader image;
-uniform float multiply;
-
-vec3 encoded(vec3 c) {
-  vec3 lin = clamp(toLinearSrgb(c), 0.0, 1.0);
-  return mix(lin * 12.92, 1.055 * pow(lin, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, lin));
-}
-
-half4 main(vec2 xy) {
-  vec4 px = image.eval(xy);
-  vec3 c = encoded(px.a > 0.0 ? px.rgb / px.a : px.rgb);
-  float peak = max(c.r, max(c.g, c.b));
-  if (multiply > 0.5) return half4(0.0, 0.0, 0.0, (1.0 - peak) * px.a);
-  return half4(px.rgb, peak * px.a);
-}`);
-
 const SKIA_BLEND = { normal: 'srcOver', multiply: 'multiply', screen: 'screen', 'soft-light': 'softLight', 'color-dodge': 'colorDodge', 'color-burn': 'colorBurn', saturation: 'saturation' } as const satisfies Record<LayerMode, string>;
 
 /** What a Skia-drawn picture can have done to it beyond being shown. */
@@ -45,19 +22,18 @@ export type Treatment = {
   chroma?: Chroma | null;
   /** Mask outline as an SVG path in the picture's own box. */
   clip?: string | null;
-  /** Degrees the canvas itself is turned by, when the video is stored on its side. */
+  /** Degrees the picture is stored turned by: a phone's portrait video is stored on its side. */
   turn?: number;
-  /** How the picture mixes with what is under it. */
-  blend?: 'normal' | 'screen' | 'multiply';
   /** Filter and adjust layers, drawn inside the mask. */
   look?: CompiledLook | null;
 };
 
 /**
- * Whether Skia can decode video here. On Android its decoder aborts the whole app as soon
- * as a video is opened (seen in Expo Go on an API 35 emulator, with either graphics mode),
- * so there a video is never handed to it: the plain player shows the clip untreated and
- * the treatment appears in the export.
+ * Whether Skia can show video here. Not on Android yet: in Expo Go opening a video
+ * aborts the whole app, and in a development build (which needs Android 8.0 as its
+ * minimum for Skia's video code to be compiled in at all) the video opens but no frame
+ * is ever drawn, at least on the emulator. So there a video is never handed to Skia:
+ * the plain player shows the clip untreated and the treatment appears in the export.
  */
 export const SKIA_VIDEO = Platform.OS !== 'android';
 
@@ -66,12 +42,69 @@ export type Pick = (color: string) => void;
 
 const LOUPE = 56;
 
+/** Any picture Skia can draw: a still, or a video's current frame. */
+export type Frame = SkImage | null | SharedValue<SkImage | null>;
+
 /**
- * Draws a picture with Skia: through the chroma shader, inside a mask, under its
- * look. While a colour is being picked the picture is shown untouched, so the
- * finger samples the original.
+ * One treated picture as Skia nodes, for use inside any canvas: keyed, cut to its
+ * mask and graded. `raw` shows it untouched.
  */
-function Keyed({ image, chroma, clip, turn = 0, blend, look, width, height, pick, children }: Treatment & { image: SkImage | null | SharedValue<SkImage | null>; width: number; height: number; pick?: Pick; children?: ReactNode }) {
+export function Treated({ image, chroma, clip, turn = 0, look, width, height, raw }: Treatment & { image: Frame; width: number; height: number; raw?: boolean }) {
+  // The stored picture is drawn in its own box, then turned upright into ours.
+  const quarter = turn % 180 !== 0;
+  const iw = quarter ? height : width;
+  const ih = quarter ? width : height;
+  const picture = <ImageShader image={image} fit="cover" rect={{ x: 0, y: 0, width: iw, height: ih }} />;
+  const keyed = !raw && chroma && effect ? chroma : null;
+  const outline = !raw && clip ? Skia.Path.MakeFromSVGString(clip) : null;
+  const sat = look && !raw ? saturationLayer(look.saturation) : null;
+  const layers = look && !raw ? (sat ? [sat, ...look.layers] : look.layers) : [];
+  return (
+    <Group clip={outline ?? undefined}>
+      <Group transform={turn ? [{ translateX: width / 2 }, { translateY: height / 2 }, { rotate: (turn * Math.PI) / 180 }, { translateX: -iw / 2 }, { translateY: -ih / 2 }] : undefined}>
+        <Rect x={0} y={0} width={iw} height={ih}>
+          {keyed && effect ? <Shader source={effect} uniforms={uniforms(keyed)}>{picture}</Shader> : picture}
+        </Rect>
+      </Group>
+      {layers.map((l, i) => (
+        <Rect key={i} x={0} y={0} width={width} height={height} color={l.color} opacity={l.opacity} blendMode={SKIA_BLEND[l.mode]} />
+      ))}
+      {look && !raw && look.vignette > 0 && (
+        <Rect x={0} y={0} width={width} height={height}>
+          <RadialGradient c={vec(width / 2, height / 2)} r={Math.hypot(width, height) / 2} colors={['#00000000', '#00000000', `rgba(0,0,0,${0.8 * look.vignette})`]} positions={[0, 0.45, 1]} />
+        </Rect>
+      )}
+    </Group>
+  );
+}
+
+/**
+ * A video decoded by Skia and kept in step with the editor clock. Unlike the ordinary
+ * player this hands over each frame as an image, which is what lets shaders see it.
+ */
+export function useSkiaVideo(uri: string, target: number, playing: boolean, volume: number, rate = 1) {
+  const paused = useSharedValue(true);
+  const seek = useSharedValue<number | null>(null);
+  const level = useSharedValue(volume);
+  const { currentFrame, currentTime, duration, rotation } = useVideo(uri, { paused, seek, volume: level, looping: false });
+  // Skia plays at 1x only, so any other speed is shown by seeking.
+  const running = playing && Math.abs(rate - 1) < 0.01;
+
+  // Only jump when the video has really drifted. `duration` is 0 until the file has
+  // loaded, so the first seek waits for that.
+  useEffect(() => {
+    paused.value = !running;
+    level.value = volume;
+    // Never exactly the start: a paused video only hands over a frame when a seek moves it.
+    const want = Math.max(target, 0.1) * 1000;
+    if (duration > 0 && Math.abs(currentTime.value - want) > (running ? 350 : 40)) seek.value = want;
+  }, [paused, seek, level, currentTime, duration, target, running, volume]);
+
+  return { frame: currentFrame, turn: rotation as number };
+}
+
+/** A treated picture in its own canvas, with the eyedropper. */
+function Keyed({ image, width, height, pick, ...treatment }: Treatment & { image: Frame; width: number; height: number; pick?: Pick }) {
   const canvas = useCanvasRef();
   const shot = useRef<SkImage | null>(null);
   const [probe, setProbe] = useState<{ x: number; y: number; color: string } | null>(null);
@@ -107,26 +140,6 @@ function Keyed({ image, chroma, clip, turn = 0, blend, look, width, height, pick
     if (hit) pick?.(hit.color);
   };
 
-  const picture = <ImageShader image={image} fit="cover" rect={{ x: 0, y: 0, width, height }} />;
-  const keyed = !pick && chroma && effect ? chroma : null;
-  const outline = !pick && clip ? Skia.Path.MakeFromSVGString(clip) : null;
-  if (outline && turn) {
-    // The mask is given upright; this canvas is turned, so turn the mask back to meet it.
-    const quarter = turn % 180 !== 0;
-    const m = Skia.Matrix();
-    m.translate(width / 2, height / 2);
-    m.rotate((-turn * Math.PI) / 180);
-    m.translate(-(quarter ? height : width) / 2, -(quarter ? width : height) / 2);
-    outline.transform(m);
-  }
-  const sat = look && !pick ? saturationLayer(look.saturation) : null;
-  const layers = look && !pick ? (sat ? [sat, ...look.layers] : look.layers) : [];
-  const mixed =
-    !pick && mixer && blend && blend !== 'normal' ? (
-      <Paint>
-        <RuntimeShader source={mixer} uniforms={{ multiply: blend === 'multiply' ? 1 : 0 }} />
-      </Paint>
-    ) : undefined;
   return (
     <View
       style={{ width, height }}
@@ -138,21 +151,8 @@ function Keyed({ image, chroma, clip, turn = 0, blend, look, width, height, pick
       onResponderRelease={finish}
       onResponderTerminate={() => setProbe(null)}>
       <Canvas ref={canvas} style={{ width, height }} pointerEvents="none">
-        <Group clip={outline ?? undefined} layer={mixed}>
-          <Rect x={0} y={0} width={width} height={height}>
-            {keyed && effect ? <Shader source={effect} uniforms={uniforms(keyed)}>{picture}</Shader> : picture}
-          </Rect>
-          {layers.map((l, i) => (
-            <Rect key={i} x={0} y={0} width={width} height={height} color={l.color} opacity={l.opacity} blendMode={SKIA_BLEND[l.mode]} />
-          ))}
-          {look && !pick && look.vignette > 0 && (
-            <Rect x={0} y={0} width={width} height={height}>
-              <RadialGradient c={vec(width / 2, height / 2)} r={Math.hypot(width, height) / 2} colors={['#00000000', '#00000000', `rgba(0,0,0,${0.8 * look.vignette})`]} positions={[0, 0.45, 1]} />
-            </Rect>
-          )}
-        </Group>
+        <Treated image={image} width={width} height={height} raw={!!pick} {...treatment} />
       </Canvas>
-      {children}
       {probe && (
         // Sits above the finger so the colour under it stays visible.
         <View
@@ -164,16 +164,8 @@ function Keyed({ image, chroma, clip, turn = 0, blend, look, width, height, pick
   );
 }
 
-/**
- * A green-screen video, drawn frame by frame through the chroma shader. Unlike the
- * ordinary player it is decoded by Skia, which is what lets a shader see its pixels.
- */
 export function KeyedVideo({
   uri,
-  chroma,
-  clip,
-  blend,
-  look,
   width,
   height,
   target,
@@ -181,6 +173,7 @@ export function KeyedVideo({
   volume,
   rate = 1,
   pick,
+  ...treatment
 }: Treatment & {
   uri: string;
   width: number;
@@ -189,42 +182,15 @@ export function KeyedVideo({
   target: number;
   playing: boolean;
   volume: number;
-  /** Playback speed. Skia plays at 1x only, so any other speed is shown by seeking. */
   rate?: number;
   pick?: Pick;
 }) {
-  const paused = useSharedValue(true);
-  const seek = useSharedValue<number | null>(null);
-  const level = useSharedValue(volume);
-  const { currentFrame, currentTime, duration, rotation } = useVideo(uri, { paused, seek, volume: level, looping: false });
-  const running = playing && Math.abs(rate - 1) < 0.01;
-
-  // Keep the video in step with the editor clock: only jump when it has really drifted.
-  // `duration` is 0 until the file has loaded, so the first seek is repeated once it has.
-  useEffect(() => {
-    paused.value = !running;
-    level.value = volume;
-    // Never exactly the start: a paused video only hands over a frame when a seek moves it.
-    const want = Math.max(target, 0.1) * 1000;
-    if (duration > 0 && Math.abs(currentTime.value - want) > (running ? 350 : 40)) seek.value = want;
-  }, [paused, seek, level, currentTime, duration, target, running, volume]);
-
-  // Skia hands over frames as stored. A phone's portrait video is stored on its side.
-  const turned = rotation === 90 || rotation === 270;
-  if (!turned && !rotation) return <Keyed image={currentFrame} chroma={chroma} clip={clip} blend={blend} look={look} width={width} height={height} pick={pick} />;
-  const w = turned ? height : width;
-  const h = turned ? width : height;
-  return (
-    <View style={{ width, height }}>
-      <View style={{ position: 'absolute', left: (width - w) / 2, top: (height - h) / 2, width: w, height: h, transform: [{ rotate: `${rotation}deg` }] }}>
-        <Keyed image={currentFrame} chroma={chroma} clip={clip} turn={rotation} blend={blend} look={look} width={w} height={h} pick={pick} />
-      </View>
-    </View>
-  );
+  const { frame, turn } = useSkiaVideo(uri, target, playing, volume, rate);
+  return <Keyed image={frame} width={width} height={height} pick={pick} {...treatment} turn={turn} />;
 }
 
-export function KeyedImage({ uri, chroma, clip, blend, look, width, height, pick }: Treatment & { uri: string; width: number; height: number; pick?: Pick }) {
+export function KeyedImage({ uri, width, height, pick, ...treatment }: Treatment & { uri: string; width: number; height: number; pick?: Pick }) {
   const image = useImage(uri);
   if (!image) return null;
-  return <Keyed image={image} chroma={chroma} clip={clip} blend={blend} look={look} width={width} height={height} pick={pick} />;
+  return <Keyed image={image} width={width} height={height} pick={pick} {...treatment} />;
 }

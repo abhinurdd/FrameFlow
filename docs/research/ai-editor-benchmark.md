@@ -54,9 +54,9 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 | Transitions | CapCut library | ✅ 10 (dissolve, dips, pushes, wipes, zoom), duration, apply to all |
 | Effects | CapCut library | 🟡 8 (shake, pulse, slow zoom, flash, strobe, blur, dim, letterbox) |
 | Picture-in-picture overlays | CapCut | ✅ video and photo, with blend modes and seven mask shapes |
-| Blend modes | CapCut | 🟡 7 on photos; Screen and Multiply on video overlays (the live preview approximates them, export is exact) |
+| Blend modes | CapCut | ✅ 7, on photo and video overlays, true blend in preview on iOS; 🟡 Android previews a blended video unblended (export is right) |
 | Masks | linear, mirror, circle, rectangle, star… | 🟡 circle, rounded, diamond, triangle, hexagon, star, heart; ❌ linear and mirror, feather, invert, moving the mask inside the picture |
-| Canvas ratio and background | CapCut, InShot | ✅ 8 ratios, colour background; blur background shows in export only |
+| Canvas ratio and background | CapCut, InShot | ✅ 8 ratios, colour background, blur background (iOS preview and export; not yet offered on Android) |
 | Rotate, flip, fill / fit, zoom, opacity | all | ✅ |
 | Chroma key | CapCut, InShot, Edits | ✅ on main-track clips and on video and photo overlays: key colour (presets or an eyedropper that samples the picture), strength, soft edge, tint clean-up |
 | Stabilise | CapCut, InShot | 🟡 server tool, light one-pass stabilisation |
@@ -122,7 +122,7 @@ The others are narrower: **Captions** (talking-head AI, one-tap edit, dubbing), 
 1. **Deploy the media server.** Until it runs somewhere reachable, export and every AI tool only work next to the development Mac.
 2. **Real AI clipping**, wired into the editor. It is the differentiator VN and CapCut lack for Hindi, and it is still a mock.
 3. **Hinglish caption quality.** Whisper produced Devanagari for English loan words ("स्टार्टार्ट" for "startup"). The ASR bakeoff decides the provider.
-4. **Mask feather, invert and position; the remaining blend modes on video overlays; background blur in preview.** These need the main clip and its overlays drawn in one shader pass.
+4. **Mask feather, invert and position**, on the iOS stage; and **an Android route for the stage**, which Skia cannot provide yet.
 
 ## Sources
 

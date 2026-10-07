@@ -72,13 +72,9 @@ export type Segment = {
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'soft-light' | 'lighten' | 'darken';
 export const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'soft-light', 'lighten', 'darken'];
 export type { Mask } from './mask';
-/** The modes a playing video can be given: the ones its live preview can show. */
-export const VIDEO_BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply'];
-
-/** The blend mode an overlay is really drawn with. */
+/** The blend mode an overlay is really drawn with. Stickers do not blend. */
 export function overlayBlend(o: { kind: Overlay['kind']; blend: BlendMode }): BlendMode {
-  if (o.kind === 'sticker') return 'normal';
-  return o.kind === 'image' || VIDEO_BLEND_MODES.includes(o.blend) ? o.blend : 'normal';
+  return o.kind === 'sticker' ? 'normal' : o.blend;
 }
 
 /** Picture-in-picture video or image, or an emoji sticker. Base width is half the canvas. */

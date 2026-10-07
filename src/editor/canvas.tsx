@@ -19,6 +19,7 @@ import { maskPath, squareMask } from '@/engine/mask';
 import { sourceAt, speedAt } from '@/engine/speed';
 
 import { KeyedImage, KeyedVideo, SKIA_VIDEO, type Pick } from './keyed';
+import { Stage, stagePlan } from './stage';
 import type { CanvasSize, Selection } from './types';
 
 const SELECT = colors.select;
@@ -99,10 +100,13 @@ function MainLayer({
   playing,
   pick,
   hidden,
+  staged,
   onPress,
 }: {
   /** Loaded and ready behind the scenes, but not part of the picture yet. */
   hidden: boolean;
+  /** The stage is drawing this clip: only its touch area and outline are left here. */
+  staged: boolean;
   segment: Segment;
   asset: Asset;
   player: VideoPlayer;
@@ -145,7 +149,7 @@ function MainLayer({
         <Pressable
           onPress={onPress}
           style={{ position: 'absolute', left: (canvas.w - fw) / 2 + t.x * canvas.w, top: (canvas.h - fh) / 2 + t.y * canvas.h, width: fw, height: fh, opacity: t.opacity, overflow: 'hidden', transform: [{ scale: t.scale }, { rotate: `${t.rotation}deg` }], borderWidth: selected ? 1.5 : 0, borderColor: SELECT }}>
-          {asset.placeholder ? (
+          {staged ? null : asset.placeholder ? (
             // The video is not on this phone yet: show a stand-in so timing and captions can still be edited.
             <ClipFrame tone={0} personSize={fw * 0.9} style={[media, { borderRadius: 0 }]} />
           ) : keyed ? (
@@ -162,7 +166,7 @@ function MainLayer({
           ) : (
             <VideoView player={player} surfaceType="textureView" nativeControls={false} contentFit="fill" style={media} />
           )}
-          {!keyed && !segment.chroma && <LookLayers look={segment.look} width={fw} height={fh} />}
+          {!staged && !keyed && !segment.chroma && <LookLayers look={segment.look} width={fw} height={fh} />}
           {!skia && !hidden && segment.chroma && <ExportOnly />}
         </Pressable>
       </View>
@@ -203,7 +207,7 @@ function OverlayVideo({ overlay, asset, time, playing, style }: { overlay: Overl
   return <VideoView player={player} surfaceType="textureView" nativeControls={false} contentFit="cover" style={style} />;
 }
 
-function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, pick, onPress }: { overlay: Overlay; asset?: Asset; time: number; playing: boolean; canvas: CanvasSize; nudge: Nudge | null; selected: boolean; pick?: Pick; onPress: () => void }) {
+function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, pick, staged, onPress }: { overlay: Overlay; asset?: Asset; time: number; playing: boolean; canvas: CanvasSize; nudge: Nudge | null; selected: boolean; pick?: Pick; /** The stage is drawing this overlay. */ staged: boolean; onPress: () => void }) {
   const local = time - overlay.start;
   const visible = local >= 0 && local < overlay.duration;
   const t = nudged(resolveTransform(overlay, Math.max(0, local), overlay.duration), nudge, canvas);
@@ -220,7 +224,7 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
   // Skia draws the overlay when its pixels are needed: to key, to cut a shape, or to blend a playing video.
   const wanted = overlay.kind !== 'sticker' && !!asset && (!!keyed || shaped || (blended && asset.kind === 'video'));
   const drawn = wanted && (asset?.kind === 'image' || SKIA_VIDEO);
-  const treatment = { chroma: overlay.chroma, clip: shaped ? maskPath(overlay.mask, bw, bh) : null, look: overlay.chroma ? null : compileLook(overlay.look), blend: asset?.kind === 'video' && (blend === 'screen' || blend === 'multiply') ? blend : ('normal' as const) };
+  const treatment = { chroma: overlay.chroma, clip: shaped ? maskPath(overlay.mask, bw, bh) : null, look: overlay.chroma ? null : compileLook(overlay.look) };
   return (
     <Pressable
       onPress={onPress}
@@ -235,8 +239,8 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
         opacity: visible ? t.opacity : 0,
         borderRadius: radius,
         overflow: 'hidden',
-        // A playing video is mixed inside Skia instead: see `mixer` in keyed.tsx.
-        mixBlendMode: asset?.kind === 'video' ? 'normal' : blend,
+        // A playing video cannot be blended as a view: the stage draws it instead.
+        mixBlendMode: staged || asset?.kind === 'video' ? 'normal' : blend,
         transform: [{ scale: t.scale }, { rotate: `${t.rotation}deg` }],
         borderWidth: selected ? 1.5 : 0,
         borderColor: SELECT,
@@ -245,7 +249,7 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
       }}>
       {overlay.kind === 'sticker' ? (
         <Text style={{ fontSize: bw * 0.8, lineHeight: bw, transform: [{ scaleX: overlay.flipH ? -1 : 1 }] }}>{overlay.emoji}</Text>
-      ) : drawn && asset ? (
+      ) : staged ? null : drawn && asset ? (
         <View style={{ transform: [{ scaleX: overlay.flipH ? -1 : 1 }] }}>
           {asset.kind === 'video' ? (
             <KeyedVideo uri={asset.uri} {...treatment} width={bw} height={bh} target={overlay.in + Math.max(0, local)} playing={playing && visible} volume={overlay.muted || !visible ? 0 : overlay.volume} pick={pick} />
@@ -258,8 +262,8 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
       ) : (
         asset && <Image source={{ uri: asset.uri }} style={media as ImageStyle} contentFit="cover" />
       )}
-      {overlay.kind !== 'sticker' && !drawn && !overlay.chroma && <LookLayers look={overlay.look} width={bw} height={bh} />}
-      {wanted && !drawn && (overlay.chroma || shaped || blended) && <ExportOnly />}
+      {overlay.kind !== 'sticker' && !staged && !drawn && !overlay.chroma && <LookLayers look={overlay.look} width={bw} height={bh} />}
+      {wanted && !staged && !drawn && (overlay.chroma || shaped || blended) && <ExportOnly />}
     </Pressable>
   );
 }
@@ -379,12 +383,16 @@ export function EditCanvas({
   const mix = frame?.b ? transitionAt(frame.transition.type, frame.progress) : null;
   const fx = combineEffects(activeAt(edit.effects, time).map((e) => effectAt(e.type, time - e.start, e.duration)));
   const liveFor = (track: 'main' | 'overlays' | 'texts', id: string) => (selection?.track === track && selection.id === id ? nudge : null);
+  // The eyedropper samples an item's own canvas, so the stage steps back while it is in use.
+  const plan = stagePlan(edit, time);
+  const mixing = plan.mixing && !onPick;
 
   return (
     <GestureDetector gesture={Gesture.Simultaneous(pan, pinch, twist)}>
       <View style={{ width: canvas.w, height: canvas.h, overflow: 'hidden', backgroundColor: edit.background.type === 'color' ? edit.background.color : '#101014' }}>
         <Pressable style={fill} onPress={() => onSelect(null)} />
         <View pointerEvents="box-none" style={[fill, { transform: [{ translateX: fx.x * canvas.w }, { translateY: fx.y * canvas.h }, { scale: fx.scale }] }]}>
+          <Stage edit={edit} time={time} playing={playing} canvas={canvas} plan={{ ...plan, mixing }} nudgeFor={(track, id) => (t) => nudged(t, liveFor(track, id), canvas)} />
           {slotSegs.map((segId, k) => {
             const index = segId ? edit.main.findIndex((s) => s.id === segId) : -1;
             const segment = edit.main[index];
@@ -398,6 +406,7 @@ export function EditCanvas({
               <MainLayer
                 key={k}
                 hidden={waiting}
+                staged={mixing}
                 segment={segment}
                 asset={asset}
                 player={players[k]}
@@ -413,7 +422,7 @@ export function EditCanvas({
               />
             );
           })}
-          {mix?.wash && <View pointerEvents="none" style={[fill, { backgroundColor: mix.wash.color, opacity: mix.wash.opacity, zIndex: 2 }]} />}
+          {mix?.wash && !mixing && <View pointerEvents="none" style={[fill, { backgroundColor: mix.wash.color, opacity: mix.wash.opacity, zIndex: 2 }]} />}
           <View pointerEvents="box-none" style={[fill, { zIndex: 3 }]}>
             {edit.overlays
               .filter((o) => time >= o.start - 1 && time < o.start + o.duration)
@@ -428,6 +437,7 @@ export function EditCanvas({
                   nudge={liveFor('overlays', o.id)}
                   selected={selection?.track === 'overlays' && selection.id === o.id}
                   pick={selection?.track === 'overlays' && selection.id === o.id ? onPick : undefined}
+                  staged={mixing}
                   onPress={() => onSelect({ track: 'overlays', id: o.id })}
                 />
               ))}

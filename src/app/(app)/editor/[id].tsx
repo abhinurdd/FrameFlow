@@ -78,7 +78,6 @@ import {
   type Edit,
   type Segment,
   BLEND_MODES,
-  VIDEO_BLEND_MODES,
   overlayBlend,
 } from '@/engine/timeline';
 import { uid, useEdits } from '@/state/edits';
@@ -800,11 +799,11 @@ export default function Editor() {
         }}
       />
     );
-  else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={overlayBlend(selOverlay)} modes={selOverlay.kind === 'video' ? VIDEO_BLEND_MODES : BLEND_MODES} mask={selOverlay.mask}
+  else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={overlayBlend(selOverlay)} modes={BLEND_MODES} mask={selOverlay.mask}
         onBlend={(blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend }))} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
   else if (panel === 'rename') body = <PromptPanel key={edit.id} initial={edit.name} placeholder="Project name" action="Save" onSubmit={(name) => { useEdits.getState().setEdit({ ...edit, name }); setPanel(null); }} />;
   else if (panel === 'chroma' && keyable) body = <ChromaPanel chroma={keyable.chroma} picking={picking} onPicking={canPick ? startPicking : undefined} onChange={setChroma} />;
-  else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;
+  else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} blur={SKIA_VIDEO} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>

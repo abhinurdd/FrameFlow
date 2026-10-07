@@ -460,7 +460,7 @@ export function ActionsPanel({ actions }: { actions: { label: string; icon: keyo
 
 const BACKGROUNDS = ['#000000', '#FFFFFF', '#15151C', '#FF7A1A', '#FF2E7E', '#2D6BFF', '#3DDC84', '#FFD23F'];
 
-export function CanvasPanel({ aspect, background, onAspect, onBackground }: { aspect: EditAspect; background: Background; onAspect: (a: EditAspect) => void; onBackground: (b: Background) => void }) {
+export function CanvasPanel({ aspect, background, blur, onAspect, onBackground }: { aspect: EditAspect; background: Background; /** Whether a blurred background can be previewed on this phone. */ blur: boolean; onAspect: (a: EditAspect) => void; onBackground: (b: Background) => void }) {
   return (
     <View style={{ gap: 8 }}>
       <Strip>
@@ -470,6 +470,7 @@ export function CanvasPanel({ aspect, background, onAspect, onBackground }: { as
       </Strip>
       <Strip>
         <T variant="muted">Background</T>
+        {blur && <Chip label="Blur" selected={background.type === 'blur'} onPress={() => onBackground({ type: 'blur' })} />}
         {BACKGROUNDS.map((c) => (
           <Pressable key={c} accessibilityRole="button" accessibilityLabel={`Background ${c}`} hitSlop={6} onPress={() => onBackground({ type: 'color', color: c })} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: c, borderWidth: 2, borderColor: background.type === 'color' && background.color === c ? colors.highlight : colors.lineStrong }} />
         ))}
