@@ -176,13 +176,14 @@ export function SpeedPanel({ speed, curve, onSpeed, onCurve }: { speed: number; 
   );
 }
 
-export function ChromaPanel({ chroma, picking, onPicking, onChange }: { chroma: Chroma | null | undefined; picking: boolean; onPicking: (on: boolean) => void; onChange: Change<Chroma | null> }) {
+export function ChromaPanel({ chroma, picking, onPicking, onChange }: { chroma: Chroma | null | undefined; picking: boolean; /** Absent where the picture cannot be sampled. */ onPicking?: (on: boolean) => void; onChange: Change<Chroma | null> }) {
   const c = chroma ?? DEFAULT_CHROMA;
   const custom = !!chroma && !KEY_COLORS.includes(chroma.color);
   return (
     <View style={{ gap: 8 }}>
       <Strip>
         <Chip label="Off" selected={!chroma} onPress={() => onChange(null, true)} />
+        {onPicking && (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Pick the colour to remove from the picture"
@@ -194,6 +195,7 @@ export function ChromaPanel({ chroma, picking, onPicking, onChange }: { chroma: 
           <T style={{ fontSize: 13 }}>Pick</T>
           {custom && <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: chroma.color, borderWidth: 1.5, borderColor: colors.highlight }} />}
         </Pressable>
+        )}
         {KEY_COLORS.map((color) => (
           <Pressable
             key={color}

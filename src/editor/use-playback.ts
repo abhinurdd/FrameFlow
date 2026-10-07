@@ -1,5 +1,6 @@
 import { useVideoPlayer, type VideoPlayer } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 
 import { fadeGain } from '@/engine/animate';
 import { offsetAt, speedAt } from '@/engine/speed';
@@ -15,16 +16,16 @@ import { locate, mainFrameAt, segmentDuration, totalDuration, type Edit, type Lo
  * same clock in their own components.
  */
 
-type Slot = { segId: string | null; assetId: string | null; ready: boolean; playing: boolean; rate: number; volume: number; muted: boolean };
-const newSlot = (): Slot => ({ segId: null, assetId: null, ready: false, playing: false, rate: 1, volume: 1, muted: false });
+type Slot = { segId: string | null; assetId: string | null; ready: boolean; /** False until the loaded file has been moved to its frame once. */ placed: boolean; playing: boolean; rate: number; volume: number; muted: boolean };
+const newSlot = (): Slot => ({ segId: null, assetId: null, ready: false, placed: false, playing: false, rate: 1, volume: 1, muted: false });
 
 type Wanted = { loc: Location; gain: number; active: boolean };
 
 function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit, playing: boolean, onReady: () => void) {
   if (!want) {
+    // The slot keeps its clip (and the canvas keeps its video view) until something else needs it.
     if (slot.playing) player.pause();
     slot.playing = false;
-    slot.segId = null;
     return;
   }
   const seg = want.loc.segment;
@@ -38,6 +39,7 @@ function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit,
   if (slot.assetId !== asset.id) {
     slot.assetId = asset.id;
     slot.ready = false;
+    slot.placed = false;
     slot.playing = false;
     player
       .replaceAsync(asset.uri)
@@ -60,6 +62,16 @@ function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit,
   // On a speed curve the rate follows the curve as the clip plays.
   const rate = Math.min(16, Math.max(0.1, speedAt(seg, target)));
   const tolerance = shouldPlay ? 0.3 * Math.max(1, rate) : 0.03;
+  if (!slot.placed) {
+    slot.placed = true;
+    if (Platform.OS === 'android' && !shouldPlay) {
+      // Android draws nothing for a paused player until a seek really moves it, so a freshly
+      // loaded file is stepped just past its frame, then brought back by the next pass.
+      player.currentTime = target + 0.08;
+      setTimeout(onReady, 150);
+      return;
+    }
+  }
   if (Math.abs(player.currentTime - target) > tolerance) player.currentTime = target;
   if (Math.abs(slot.rate - rate) > 0.02) {
     player.playbackRate = rate;
@@ -82,7 +94,11 @@ function drive(player: VideoPlayer, slot: Slot, want: Wanted | null, edit: Edit,
   }
 }
 
-/** Point the two players at what the main track needs at `t`. Returns the segment each slot shows. */
+/**
+ * Point the two players at what the main track needs at `t`. Returns the segment each slot holds,
+ * shown or preloaded: the canvas keeps a video view mounted for both, because Android draws
+ * nothing in a view that is created at the moment of a cut.
+ */
 function sync(players: VideoPlayer[], slots: Slot[], edit: Edit, t: number, playing: boolean, onReady: () => void): (string | null)[] {
   const frame = mainFrameAt(edit, t);
   const wanted: Wanted[] = [];
@@ -105,7 +121,7 @@ function sync(players: VideoPlayer[], slots: Slot[], edit: Edit, t: number, play
     if (k >= 0) assign[k] = w;
   }
   assign.forEach((w, k) => drive(players[k], slots[k], w, edit, playing, onReady));
-  return assign.map((w) => (w?.active ? w.loc.segment.id : null));
+  return slots.map((s) => s.segId);
 }
 
 /** Where the clock should be according to the player showing the current segment, if it is running. */

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { createVideoPlayer, type VideoPlayer, type VideoThumbnail } from 'expo-video';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import type { Asset, Segment } from '@/engine/timeline';
 import { colors } from '@/ui/theme';
@@ -21,6 +21,21 @@ function whenReady(player: VideoPlayer) {
   });
 }
 
+/**
+ * Android reads thumbnails from the path exactly as written, without undoing its
+ * percent-escapes. Expo Go keeps files in a folder with a literal `%` in its name,
+ * so there the first try fails; this one hands over the path already unescaped.
+ */
+async function escapedPathThumbs(uri: string, times: number[]) {
+  if (Platform.OS !== 'android' || !uri.includes('%')) throw new Error('No thumbnails');
+  const player = createVideoPlayer(decodeURIComponent(uri));
+  try {
+    return await player.generateThumbnailsAsync(times, { maxHeight: 96 });
+  } finally {
+    player.release();
+  }
+}
+
 function loadThumbs(asset: Asset) {
   let job = cache.get(asset.uri);
   if (!job) {
@@ -30,6 +45,7 @@ function loadThumbs(asset: Asset) {
     const player = createVideoPlayer(asset.uri);
     job = whenReady(player)
       .then(() => player.generateThumbnailsAsync(times, { maxHeight: 96 }))
+      .catch(() => escapedPathThumbs(asset.uri, times))
       .catch(() => [])
       .finally(() => player.release());
     cache.set(asset.uri, job);

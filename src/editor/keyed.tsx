@@ -1,6 +1,6 @@
 import { AlphaType, Canvas, ColorType, Group, ImageShader, Paint, RadialGradient, Rect, RuntimeShader, Shader, Skia, useCanvasRef, useImage, useVideo, vec, type SkImage } from '@shopify/react-native-skia';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { View, type GestureResponderEvent } from 'react-native';
+import { Platform, View, type GestureResponderEvent } from 'react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import { CHROMA_SHADER, chromaRange, hexToRgb, rgbToHex, type Chroma } from '@/engine/chroma';
@@ -52,6 +52,14 @@ export type Treatment = {
   /** Filter and adjust layers, drawn inside the mask. */
   look?: CompiledLook | null;
 };
+
+/**
+ * Whether Skia can decode video here. On Android its decoder aborts the whole app as soon
+ * as a video is opened (seen in Expo Go on an API 35 emulator, with either graphics mode),
+ * so there a video is never handed to it: the plain player shows the clip untreated and
+ * the treatment appears in the export.
+ */
+export const SKIA_VIDEO = Platform.OS !== 'android';
 
 /** Called with the colour under the finger once it lifts. */
 export type Pick = (color: string) => void;
@@ -198,7 +206,7 @@ export function KeyedVideo({
     level.value = volume;
     // Never exactly the start: a paused video only hands over a frame when a seek moves it.
     const want = Math.max(target, 0.1) * 1000;
-    if (Math.abs(currentTime.value - want) > (running ? 350 : 40)) seek.value = want;
+    if (duration > 0 && Math.abs(currentTime.value - want) > (running ? 350 : 40)) seek.value = want;
   }, [paused, seek, level, currentTime, duration, target, running, volume]);
 
   // Skia hands over frames as stored. A phone's portrait video is stored on its side.

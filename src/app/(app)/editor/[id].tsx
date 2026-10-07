@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SKIA_VIDEO } from '@/editor/keyed';
 import { AudioTracks } from '@/editor/audio';
 import { health, ServerError, tools, VOICE_EFFECTS, type VoiceEffect } from '@/editor/api';
 import { EditCanvas } from '@/editor/canvas';
@@ -623,6 +624,8 @@ export default function Editor() {
   };
   const animated = selSegment ?? selOverlay ?? selText;
   const keyable = selSegment ?? selOverlay;
+  // The eyedropper reads the picture through Skia, which cannot open a video on Android.
+  const canPick = SKIA_VIDEO || (keyable && 'assetId' in keyable && keyable.assetId ? edit.assets[keyable.assetId]?.kind === 'image' : false);
   const setChroma = (chroma: Chroma | null, commit: boolean) => {
     if (selSegment) change(patchSegment(edit, selSegment.id, { chroma }), commit);
     else if (selOverlay) change(patchItem(edit, 'overlays', selOverlay.id, { chroma }), commit);
@@ -800,7 +803,7 @@ export default function Editor() {
   else if (panel === 'blend' && selOverlay) body = <BlendPanel blend={overlayBlend(selOverlay)} modes={selOverlay.kind === 'video' ? VIDEO_BLEND_MODES : BLEND_MODES} mask={selOverlay.mask}
         onBlend={(blend) => apply(patchItem(edit, 'overlays', selOverlay.id, { blend }))} onMask={(mask) => apply(patchItem(edit, 'overlays', selOverlay.id, { mask }))} />;
   else if (panel === 'rename') body = <PromptPanel key={edit.id} initial={edit.name} placeholder="Project name" action="Save" onSubmit={(name) => { useEdits.getState().setEdit({ ...edit, name }); setPanel(null); }} />;
-  else if (panel === 'chroma' && keyable) body = <ChromaPanel chroma={keyable.chroma} picking={picking} onPicking={startPicking} onChange={setChroma} />;
+  else if (panel === 'chroma' && keyable) body = <ChromaPanel chroma={keyable.chroma} picking={picking} onPicking={canPick ? startPicking : undefined} onChange={setChroma} />;
   else if (panel === 'canvas') body = <CanvasPanel aspect={edit.aspect} background={edit.background} onAspect={(aspect) => apply({ ...edit, aspect })} onBackground={(background) => apply({ ...edit, background })} />;
 
   return (

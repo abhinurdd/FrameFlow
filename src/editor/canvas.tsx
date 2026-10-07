@@ -3,7 +3,7 @@ import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View, type ImageStyle, type ViewStyle } from 'react-native';
+import { Platform, Pressable, Text, View, type ImageStyle, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { combineEffects, effectAt, resolveTransform, transformAt, transitionAt, type Layer, type Transform } from '@/engine/animate';
@@ -18,7 +18,7 @@ import { DEFAULT_CHROMA } from '@/engine/chroma';
 import { maskPath, squareMask } from '@/engine/mask';
 import { sourceAt, speedAt } from '@/engine/speed';
 
-import { KeyedImage, KeyedVideo, type Pick } from './keyed';
+import { KeyedImage, KeyedVideo, SKIA_VIDEO, type Pick } from './keyed';
 import type { CanvasSize, Selection } from './types';
 
 const SELECT = colors.select;
@@ -56,6 +56,15 @@ class NudgeTracker {
 
 const fill: ViewStyle = { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 };
 
+/** Marks a clip whose green screen, shape or blend this phone cannot preview. */
+function ExportOnly() {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 6, top: 6, paddingHorizontal: 8, height: 22, borderRadius: 11, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.65)' }}>
+      <Text style={{ color: colors.white, fontSize: 11, fontWeight: '600' }}>Shown in export</Text>
+    </View>
+  );
+}
+
 /** Filter and adjust layers, drawn over a frame and blended into it. */
 function LookLayers({ look, width, height }: { look: Look; width: number; height: number }) {
   const compiled = compileLook(look);
@@ -89,8 +98,11 @@ function MainLayer({
   selected,
   playing,
   pick,
+  hidden,
   onPress,
 }: {
+  /** Loaded and ready behind the scenes, but not part of the picture yet. */
+  hidden: boolean;
   segment: Segment;
   asset: Asset;
   player: VideoPlayer;
@@ -115,7 +127,8 @@ function MainLayer({
   const mw = turned ? fh : fw;
   const mh = turned ? fw : fh;
   // Picking a colour needs the pixels, so the clip is drawn by Skia then as well.
-  const keyed = segment.chroma ?? (pick ? DEFAULT_CHROMA : null);
+  const skia = asset.kind === 'image' || SKIA_VIDEO;
+  const keyed = hidden || !skia ? null : (segment.chroma ?? (pick ? DEFAULT_CHROMA : null));
   const source = sourceAt(segment, offset);
   const media: ViewStyle = {
     position: 'absolute',
@@ -127,7 +140,7 @@ function MainLayer({
     transform: [{ rotate: `${segment.rotation}deg` }, { scaleX: segment.flipH ? -1 : 1 }, { scaleY: segment.flipV ? -1 : 1 }],
   };
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: layer.clipLeft * canvas.w, width: (1 - layer.clipLeft - layer.clipRight) * canvas.w, height: canvas.h, overflow: 'hidden', zIndex: above ? 1 : 0 }}>
+    <View pointerEvents={hidden ? 'none' : 'box-none'} style={{ position: 'absolute', top: 0, left: layer.clipLeft * canvas.w, width: (1 - layer.clipLeft - layer.clipRight) * canvas.w, height: canvas.h, overflow: 'hidden', zIndex: above ? 1 : 0, opacity: hidden ? 0 : 1 }}>
       <View pointerEvents="box-none" style={{ position: 'absolute', left: -layer.clipLeft * canvas.w, top: 0, width: canvas.w, height: canvas.h, opacity: layer.opacity, transform: [{ translateX: layer.x * canvas.w }, { translateY: layer.y * canvas.h }, { scale: layer.scale }] }}>
         <Pressable
           onPress={onPress}
@@ -149,7 +162,8 @@ function MainLayer({
           ) : (
             <VideoView player={player} surfaceType="textureView" nativeControls={false} contentFit="fill" style={media} />
           )}
-          {!keyed && <LookLayers look={segment.look} width={fw} height={fh} />}
+          {!keyed && !segment.chroma && <LookLayers look={segment.look} width={fw} height={fh} />}
+          {!skia && !hidden && segment.chroma && <ExportOnly />}
         </Pressable>
       </View>
     </View>
@@ -175,7 +189,11 @@ function OverlayVideo({ overlay, asset, time, playing, style }: { overlay: Overl
   const [loaded, setLoaded] = useState(0);
   useEffect(() => {
     const sub = player.addListener('statusChange', ({ status }) => {
-      if (status === 'readyToPlay') setLoaded((n) => n + 1);
+      if (status !== 'readyToPlay') return;
+      if (Platform.OS !== 'android') return setLoaded((n) => n + 1);
+      // Android draws nothing for a paused player until a seek really moves it: step past the frame, then come back.
+      player.currentTime = player.currentTime + 0.08;
+      setTimeout(() => setLoaded((n) => n + 1), 150);
     });
     return () => sub.remove();
   }, [player]);
@@ -200,7 +218,8 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
   const media: ViewStyle = { width: bw, height: bh, transform: [{ scaleX: overlay.flipH ? -1 : 1 }] };
   const keyed = overlay.kind === 'sticker' ? null : (overlay.chroma ?? (pick ? DEFAULT_CHROMA : null));
   // Skia draws the overlay when its pixels are needed: to key, to cut a shape, or to blend a playing video.
-  const drawn = overlay.kind !== 'sticker' && !!asset && (!!keyed || shaped || (blended && asset.kind === 'video'));
+  const wanted = overlay.kind !== 'sticker' && !!asset && (!!keyed || shaped || (blended && asset.kind === 'video'));
+  const drawn = wanted && (asset?.kind === 'image' || SKIA_VIDEO);
   const treatment = { chroma: overlay.chroma, clip: shaped ? maskPath(overlay.mask, bw, bh) : null, look: overlay.chroma ? null : compileLook(overlay.look), blend: asset?.kind === 'video' && (blend === 'screen' || blend === 'multiply') ? blend : ('normal' as const) };
   return (
     <Pressable
@@ -239,7 +258,8 @@ function OverlayLayer({ overlay, asset, time, playing, canvas, nudge, selected, 
       ) : (
         asset && <Image source={{ uri: asset.uri }} style={media as ImageStyle} contentFit="cover" />
       )}
-      {overlay.kind !== 'sticker' && !drawn && <LookLayers look={overlay.look} width={bw} height={bh} />}
+      {overlay.kind !== 'sticker' && !drawn && !overlay.chroma && <LookLayers look={overlay.look} width={bw} height={bh} />}
+      {wanted && !drawn && (overlay.chroma || shaped || blended) && <ExportOnly />}
     </Pressable>
   );
 }
@@ -372,9 +392,12 @@ export function EditCanvas({
             if (!segment || !asset) return null;
             const incoming = frame?.b?.segment.id === segId;
             const layer = mix ? (incoming ? mix.b : mix.a) : SHOWN;
+            // The slot holding the next clip is mounted but unseen until the cut reaches it.
+            const waiting = !incoming && frame?.a.segment.id !== segId;
             return (
               <MainLayer
                 key={k}
+                hidden={waiting}
                 segment={segment}
                 asset={asset}
                 player={players[k]}
